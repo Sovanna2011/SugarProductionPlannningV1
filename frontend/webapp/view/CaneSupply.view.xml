@@ -1,0 +1,188 @@
+<mvc:View
+	controllerName="sugar.planning.controller.CaneSupply"
+	xmlns="sap.m"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns:core="sap.ui.core"
+	xmlns:t="sap.ui.table">
+
+	<Page id="canePage" title="{i18n>caneTitle}"
+		showNavButton="true" navButtonPress=".onNavBack">
+
+		<headerContent>
+			<ObjectStatus text="{view>/versionStatus}"
+				state="{path: 'view>/versionStatus', formatter: '.formatter.versionState'}"/>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<subHeader>
+			<!--
+				The Company drop-down belongs to this view, not to the shell
+				(§H2): the same login is a planner in one company and a display
+				user in the next, and two tabs may sit on two companies.
+			-->
+			<OverflowToolbar>
+				<Label text="{i18n>company}" required="true"/>
+				<ComboBox id="companySelect" selectedKey="{view>/companyId}"
+					items="{app>/companies}" change=".onCompanyChange" width="16rem">
+					<core:Item key="{app>companyId}" text="{app>companyCode} — {app>companyName}"/>
+				</ComboBox>
+
+				<ToolbarSpacer/>
+
+				<Label text="{i18n>season}"/>
+				<ComboBox selectedKey="{view>/seasonId}" items="{view>/seasons}"
+					change=".onSeasonChange" width="12rem">
+					<core:Item key="{view>id}" text="{view>seasonCode}"/>
+				</ComboBox>
+
+				<Label text="{i18n>version}"/>
+				<ComboBox selectedKey="{view>/versionId}" items="{view>/versions}"
+					change=".onVersionChange" width="16rem">
+					<core:Item key="{view>id}" text="V{view>versionNo} — {view>versionName} ({view>status})"/>
+				</ComboBox>
+
+				<Label text="{i18n>dateFrom}"/>
+				<DatePicker value="{view>/dateFrom}" valueFormat="yyyy-MM-dd"
+					displayFormat="yyyy-MM-dd" change=".onRangeChange" width="9rem"/>
+				<Label text="{i18n>dateTo}"/>
+				<DatePicker value="{view>/dateTo}" valueFormat="yyyy-MM-dd"
+					displayFormat="yyyy-MM-dd" change=".onRangeChange" width="9rem"/>
+			</OverflowToolbar>
+		</subHeader>
+
+		<content>
+			<IconTabBar id="caneTabs" expanded="true" select=".onTabSelect" class="sapUiResponsiveContentPadding">
+
+				<!-- The harvest plan: Date x Grower, inside the same version as
+				     the production plan, so one approval covers both. -->
+				<items>
+					<IconTabFilter key="harvest" text="{i18n>caneHarvestTab}" icon="sap-icon://nutrition-activity">
+						<MessageStrip visible="{= !${view>/canEditPlan} }"
+							text="{view>/planLockedReason}" type="Information"
+							showIcon="true" class="sapUiSmallMarginBottom"/>
+
+						<t:Table id="harvestTable" rows="{view>/harvestRows}"
+							selectionMode="None" visibleRowCountMode="Auto" minAutoRowCount="6"
+							class="sapUiSmallMarginBottom">
+							<t:extension>
+								<OverflowToolbar>
+									<Title text="{i18n>caneHarvestGrid}"/>
+									<ToolbarSpacer/>
+									<ObjectNumber number="{view>/harvestTotal}" unit="t"
+										emphasized="true"/>
+									<Button text="{i18n>save}" type="Emphasized"
+										enabled="{view>/canEditPlan}" press=".onSaveHarvest"/>
+								</OverflowToolbar>
+							</t:extension>
+							<t:columns>
+								<t:Column width="9rem">
+									<Label text="{i18n>date}"/>
+									<t:template><Text text="{view>planDate}"/></t:template>
+								</t:Column>
+							</t:columns>
+						</t:Table>
+					</IconTabFilter>
+
+					<!-- Weighbridge tickets: the actual against the harvest plan. -->
+					<IconTabFilter key="deliveries" text="{i18n>caneDeliveriesTab}" icon="sap-icon://shipping-status">
+						<Table id="deliveryTable" items="{view>/deliveries}"
+							growing="true" growingThreshold="25">
+							<headerToolbar>
+								<OverflowToolbar>
+									<Title text="{i18n>caneDeliveries}"/>
+									<ToolbarSpacer/>
+									<Button text="{i18n>caneNewTicket}" type="Emphasized"
+										enabled="{view>/canCreateDelivery}" press=".onNewDelivery"/>
+								</OverflowToolbar>
+							</headerToolbar>
+							<columns>
+								<Column><Text text="{i18n>documentNo}"/></Column>
+								<Column><Text text="{i18n>date}"/></Column>
+								<Column><Text text="{i18n>caneGrower}"/></Column>
+								<Column hAlign="End"><Text text="{i18n>caneNetTons}"/></Column>
+								<Column hAlign="End"><Text text="{i18n>caneCcs}"/></Column>
+								<Column hAlign="End"><Text text="{i18n>caneValue}"/></Column>
+								<Column><Text text="{i18n>status}"/></Column>
+								<Column/>
+							</columns>
+							<items>
+								<ColumnListItem>
+									<cells>
+										<Text text="{view>documentNo}"/>
+										<Text text="{view>deliveryDate}"/>
+										<Text text="{view>growerLabel}"/>
+										<ObjectNumber number="{path: 'view>netTons', formatter: '.formatter.quantity'}" unit="t"/>
+										<!-- An unmeasured analysis reads n/a, never 0. -->
+										<Text text="{path: 'view>ccsPct', formatter: '.formatter.variancePercent'}"/>
+										<Text text="{path: 'view>value', formatter: '.formatter.variancePercent'}"/>
+										<ObjectStatus text="{view>postingStatus}"
+											state="{path: 'view>postingStatus', formatter: '.formatter.postingState'}"/>
+										<HBox>
+											<Button text="{i18n>post}" type="Emphasized"
+												visible="{= ${view>postingStatus} === 'DRAFT' }"
+												enabled="{view>/canPostDelivery}"
+												press=".onPostDelivery" class="sapUiTinyMarginEnd"/>
+											<Button text="{i18n>reverse}"
+												visible="{= ${view>postingStatus} === 'POSTED' }"
+												enabled="{view>/canReverseDelivery}"
+												press=".onReverseDelivery"/>
+										</HBox>
+									</cells>
+								</ColumnListItem>
+							</items>
+						</Table>
+					</IconTabFilter>
+
+					<!-- Planned harvest against what the weighbridge received. -->
+					<IconTabFilter key="report" text="{i18n>caneReportTab}" icon="sap-icon://business-objects-experience">
+						<Table items="{view>/report}">
+							<headerToolbar>
+								<OverflowToolbar>
+									<Title text="{i18n>caneReport}"/>
+									<ToolbarSpacer/>
+									<Label text="{i18n>groupBy}"/>
+									<Select selectedKey="{view>/groupBy}" change=".onReportChange" width="10rem">
+										<core:Item key="grower" text="{i18n>caneGrower}"/>
+										<core:Item key="variety" text="{i18n>caneVariety}"/>
+										<core:Item key="date" text="{i18n>date}"/>
+										<core:Item key="zone" text="{i18n>caneZone}"/>
+										<core:Item key="supplyType" text="{i18n>caneSupplyType}"/>
+									</Select>
+									<Label text="{i18n>caneSupplyType}"/>
+									<Select selectedKey="{view>/supplyType}" change=".onReportChange" width="11rem">
+										<core:Item key="" text="{i18n>caneSupplyAll}"/>
+										<core:Item key="PURCHASED" text="{i18n>canePurchased}"/>
+										<core:Item key="OWN_ESTATE" text="{i18n>caneOwnEstate}"/>
+									</Select>
+								</OverflowToolbar>
+							</headerToolbar>
+							<columns>
+								<Column><Text text="{i18n>caneGrower}"/></Column>
+								<Column hAlign="End"><Text text="{i18n>plan}"/></Column>
+								<Column hAlign="End"><Text text="{i18n>actual}"/></Column>
+								<Column hAlign="End"><Text text="{i18n>variance}"/></Column>
+								<Column hAlign="End"><Text text="{i18n>caneCcs}"/></Column>
+								<Column hAlign="End"><Text text="{i18n>caneValue}"/></Column>
+							</columns>
+							<items>
+								<ColumnListItem>
+									<cells>
+										<Text text="{view>groupLabel}"/>
+										<ObjectNumber number="{path: 'view>plannedTons', formatter: '.formatter.quantity'}" unit="t"/>
+										<ObjectNumber number="{path: 'view>actualTons', formatter: '.formatter.quantity'}" unit="t"/>
+										<!-- No plan means no percentage: "n/a", never 0 or 100. -->
+										<ObjectStatus
+											text="{path: 'view>variancePct', formatter: '.formatter.variancePercent'}"
+											state="{path: 'view>variancePct', formatter: '.formatter.varianceState'}"/>
+										<Text text="{path: 'view>averageCcsPct', formatter: '.formatter.variancePercent'}"/>
+										<Text text="{path: 'view>purchaseValue', formatter: '.formatter.variancePercent'}"/>
+									</cells>
+								</ColumnListItem>
+							</items>
+						</Table>
+					</IconTabFilter>
+				</items>
+			</IconTabBar>
+		</content>
+	</Page>
+</mvc:View>

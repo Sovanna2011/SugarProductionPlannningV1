@@ -17,6 +17,8 @@ sap.ui.define([
 		},
 
 		onOpenPlanning:     function () { this.navTo("planning"); },
+		onOpenCane:         function () { this.navTo("cane"); },
+		onOpenMasterData:   function () { this.navTo("masterData"); },
 		onOpenVersions:     function () { this.navTo("versions"); },
 		onOpenActual:       function () { this.navTo("actual"); },
 		onOpenInventory:    function () { this.navTo("inventory"); },

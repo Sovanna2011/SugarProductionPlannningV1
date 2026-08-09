@@ -1,0 +1,89 @@
+<mvc:View
+	controllerName="sugar.planning.controller.MasterData"
+	xmlns="sap.m"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns:core="sap.ui.core">
+
+	<Page id="masterDataPage" title="{i18n>masterTitle}"
+		showNavButton="true" navButtonPress=".onNavBack">
+
+		<headerContent>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<subHeader>
+			<OverflowToolbar>
+				<Label text="{i18n>company}" required="true"/>
+				<ComboBox id="companySelect" selectedKey="{view>/companyId}"
+					items="{app>/companies}" change=".onCompanyChange" width="16rem">
+					<core:Item key="{app>companyId}" text="{app>companyCode} — {app>companyName}"/>
+				</ComboBox>
+				<ToolbarSpacer/>
+				<Text text="{i18n>masterDeactivateNote}" class="sapUiTinyMarginEnd"/>
+			</OverflowToolbar>
+		</subHeader>
+
+		<content>
+			<!--
+				Company, material, warehouse, condition silo and tank. The last
+				three are one table underneath: a tank and a silo are warehouses
+				whose type differs, so they share the lock, the capacity rule and
+				the audit trail rather than duplicating them.
+			-->
+			<IconTabBar id="masterTabs" expanded="true" select=".onTabSelect"
+				class="sapUiResponsiveContentPadding">
+				<items>
+					<IconTabFilter key="company" text="{i18n>masterCompany}" icon="sap-icon://building"/>
+					<IconTabFilter key="material" text="{i18n>masterMaterial}" icon="sap-icon://product"/>
+					<IconTabFilter key="warehouse" text="{i18n>masterWarehouse}" icon="sap-icon://warehouse"/>
+					<IconTabFilter key="silo" text="{i18n>masterSilo}" icon="sap-icon://cause"/>
+					<IconTabFilter key="tank" text="{i18n>masterTank}" icon="sap-icon://database"/>
+				</items>
+
+				<content>
+					<Table id="masterTable" items="{view>/rows}" growing="true" growingThreshold="50">
+						<headerToolbar>
+							<OverflowToolbar>
+								<Title text="{view>/tabTitle}"/>
+								<ToolbarSpacer/>
+								<SearchField width="18rem" search=".onSearch" value="{view>/search}"/>
+								<Button text="{i18n>create}" type="Emphasized"
+									enabled="{view>/canEdit}" press=".onCreate"/>
+							</OverflowToolbar>
+						</headerToolbar>
+						<columns>
+							<Column><Text text="{i18n>code}"/></Column>
+							<Column><Text text="{i18n>name}"/></Column>
+							<Column><Text text="{view>/attributeLabel}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>capacity}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>version}"/></Column>
+							<Column hAlign="End"/>
+						</columns>
+						<items>
+							<ColumnListItem>
+								<cells>
+									<ObjectIdentifier title="{view>code}"/>
+									<Text text="{view>name}"/>
+									<Text text="{view>attribute}"/>
+									<!-- A location with no maintained capacity is
+									     unlimited, which reads as "unlimited" and
+									     never as zero. -->
+									<Text text="{view>capacityText}"/>
+									<Text text="{view>version}"/>
+									<HBox>
+										<Button icon="sap-icon://edit" tooltip="{i18n>edit}"
+											enabled="{view>/canEdit}" press=".onEdit"
+											class="sapUiTinyMarginEnd"/>
+										<Button icon="sap-icon://decline" tooltip="{i18n>deactivate}"
+											enabled="{= ${view>/canEdit} &amp;&amp; ${view>/tab} !== 'company' }"
+											press=".onDeactivate"/>
+									</HBox>
+								</cells>
+							</ColumnListItem>
+						</items>
+					</Table>
+				</content>
+			</IconTabBar>
+		</content>
+	</Page>
+</mvc:View>

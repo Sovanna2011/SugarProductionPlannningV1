@@ -332,12 +332,15 @@ func NewCaneReportRepository(db *gorm.DB) interfaces.CaneReportRepository {
 // grouping key. It is a full outer join, so a grower who delivered without a
 // plan appears just as a planned grower who delivered nothing does — the
 // variance of the first is "n/a" and of the second is -100 %.
+//
+// Only the chosen grouping keys the result. Grower, variety and date are
+// projected when the grouping is the one that determines them and are NULL
+// otherwise: a report grouped by zone must not also split by grower, and it
+// must not name an arbitrary grower as if the row belonged to them.
 const canePlanVsActualSQL = `
 WITH plan AS (
     SELECT %[1]s AS group_key,
-           hi.grower_id,
-           hi.variety_id,
-           hi.plan_date,
+           %[3]s,
            SUM(hi.planned_tons) AS planned_tons
       FROM harvest_plan_items hi
       JOIN harvest_plan_headers hh ON hh.id = hi.harvest_plan_header_id
@@ -352,9 +355,7 @@ WITH plan AS (
 ),
 actual AS (
     SELECT %[2]s AS group_key,
-           d.grower_id,
-           d.variety_id,
-           d.delivery_date AS plan_date,
+           %[4]s,
            SUM(d.net_tons) AS actual_tons,
            COUNT(*)        AS deliveries,
            -- tonnage-weighted, because a 40 t load says more about the day's
@@ -363,6 +364,8 @@ actual AS (
                 THEN SUM(d.net_tons * d.ccs_pct) FILTER (WHERE d.ccs_pct IS NOT NULL)
                      / SUM(d.net_tons) FILTER (WHERE d.ccs_pct IS NOT NULL)
            END AS avg_ccs_pct,
+           -- A single unpriced load makes the whole group's value unknown
+           -- rather than understated.
            CASE WHEN COUNT(*) FILTER (WHERE d.price_per_ton IS NULL) = 0
                 THEN SUM(d.net_tons * d.price_per_ton)
            END AS purchase_value,
@@ -392,31 +395,67 @@ SELECT COALESCE(p.group_key, a.group_key)   AS group_key,
        a.purchase_value                     AS purchase_value,
        a.currency                           AS currency
   FROM plan p
-  FULL OUTER JOIN actual a
-    ON a.group_key = p.group_key
-   AND a.grower_id IS NOT DISTINCT FROM p.grower_id
-   AND a.variety_id IS NOT DISTINCT FROM p.variety_id
-   AND a.plan_date IS NOT DISTINCT FROM p.plan_date
+  FULL OUTER JOIN actual a ON a.group_key = p.group_key
   LEFT JOIN growers gp        ON gp.id = p.grower_id
   LEFT JOIN growers ga        ON ga.id = a.grower_id
   LEFT JOIN cane_varieties vp ON vp.id = p.variety_id
   LEFT JOIN cane_varieties va ON va.id = a.variety_id
  ORDER BY 1`
 
-// groupExpressions whitelists the grouping key. The client names a grouping,
-// never an expression — nothing caller-supplied reaches the statement.
-var caneGroupExpressions = map[string][2]string{
-	"grower":     {"g.grower_code || ' — ' || g.grower_name", "g.grower_code || ' — ' || g.grower_name"},
-	"variety":    {"COALESCE(v.variety_code, '(none)')", "COALESCE(v.variety_code, '(none)')"},
-	"date":       {"to_char(hi.plan_date, 'YYYY-MM-DD')", "to_char(d.delivery_date, 'YYYY-MM-DD')"},
-	"zone":       {"COALESCE(g.zone, '(unzoned)')", "COALESCE(g.zone, '(unzoned)')"},
-	"supplytype": {"g.supply_type", "g.supply_type"},
+// caneGrouping describes one whitelisted grouping: how the key is built on
+// each side, and which attributes that grouping legitimately determines. The
+// client names a grouping, never an expression — nothing caller-supplied
+// reaches the statement.
+type caneGrouping struct {
+	planKey     string
+	actualKey   string
+	planAttrs   string
+	actualAttrs string
+}
+
+const (
+	noGrowerAttr  = "NULL::bigint AS grower_id"
+	noVarietyAttr = "NULL::bigint AS variety_id"
+	noDateAttr    = "NULL::date AS plan_date"
+)
+
+var caneGroupings = map[string]caneGrouping{
+	"grower": {
+		planKey:     "g.grower_code || ' — ' || g.grower_name",
+		actualKey:   "g.grower_code || ' — ' || g.grower_name",
+		planAttrs:   "hi.grower_id, " + noVarietyAttr + ", " + noDateAttr,
+		actualAttrs: "d.grower_id, " + noVarietyAttr + ", " + noDateAttr,
+	},
+	"variety": {
+		planKey:     "COALESCE(v.variety_code, '(none)')",
+		actualKey:   "COALESCE(v.variety_code, '(none)')",
+		planAttrs:   noGrowerAttr + ", hi.variety_id, " + noDateAttr,
+		actualAttrs: noGrowerAttr + ", d.variety_id, " + noDateAttr,
+	},
+	"date": {
+		planKey:     "to_char(hi.plan_date, 'YYYY-MM-DD')",
+		actualKey:   "to_char(d.delivery_date, 'YYYY-MM-DD')",
+		planAttrs:   noGrowerAttr + ", " + noVarietyAttr + ", hi.plan_date",
+		actualAttrs: noGrowerAttr + ", " + noVarietyAttr + ", d.delivery_date AS plan_date",
+	},
+	"zone": {
+		planKey:     "COALESCE(g.zone, '(unzoned)')",
+		actualKey:   "COALESCE(g.zone, '(unzoned)')",
+		planAttrs:   noGrowerAttr + ", " + noVarietyAttr + ", " + noDateAttr,
+		actualAttrs: noGrowerAttr + ", " + noVarietyAttr + ", " + noDateAttr,
+	},
+	"supplytype": {
+		planKey:     "g.supply_type",
+		actualKey:   "g.supply_type",
+		planAttrs:   noGrowerAttr + ", " + noVarietyAttr + ", " + noDateAttr,
+		actualAttrs: noGrowerAttr + ", " + noVarietyAttr + ", " + noDateAttr,
+	},
 }
 
 func (r *caneReportRepository) CanePlanVsActual(ctx context.Context,
 	q interfaces.CanePlanVsActualQuery) ([]interfaces.CanePlanVsActualRow, error) {
 
-	expressions, ok := caneGroupExpressions[strings.ToLower(q.GroupBy)]
+	grouping, ok := caneGroupings[strings.ToLower(q.GroupBy)]
 	if !ok {
 		return nil, apperrors.ErrValidation.
 			Msgf("groupBy must be one of grower, variety, date, zone or supplyType").
@@ -430,7 +469,8 @@ func (r *caneReportRepository) CanePlanVsActual(ctx context.Context,
 
 	var rows []interfaces.CanePlanVsActualRow
 	err := database.Conn(ctx, r.db).Raw(
-		fmt.Sprintf(canePlanVsActualSQL, expressions[0], expressions[1]),
+		fmt.Sprintf(canePlanVsActualSQL,
+			grouping.planKey, grouping.actualKey, grouping.planAttrs, grouping.actualAttrs),
 		map[string]any{
 			"companyId":  q.CompanyID,
 			"versionId":  versionID,

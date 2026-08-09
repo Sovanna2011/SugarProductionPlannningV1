@@ -26,9 +26,9 @@ Development accounts (password `SugarPlanning#2026`):
 | User | What it can do |
 |---|---|
 | `admin` | everything, in all three demo companies |
-| `planner` | planner in company 1000, **display only** in 2000 |
+| `planner` | planner in company 1000, **display only** in 2000; also maintains growers and fields |
 | `approver` | approves and locks versions in 1000 and 2000 |
-| `operator` | records and posts actual production, maintains stock |
+| `operator` | records and posts actual production and cane deliveries, maintains stock |
 | `viewer` | read-only |
 
 `planner` is the interesting one: the same login, a different role in each
@@ -59,12 +59,17 @@ business rules actually accepted. It leaves behind:
 
 - an **approved** budget version and a **draft** forecast copied from it,
   seven days of plan across the mill and refinery lines
+- a **harvest plan** in the same version: seven days of cane across two own
+  estates and four purchased suppliers
+- three days of cane weighed in and issued to the mill, so the yard fills and
+  drains the way it does in a campaign
 - three days of milling posted — raw sugar, molasses and bagasse
 - the refinery route both ways: refined sugar conditioned in the silo and then
   packed, white sugar straight to its own warehouse
 - bagasse burnt for electricity, which is produced but never becomes stock
 - a molasses transfer between two tanks
-- **one draft document left unposted**, so a tester can post it themselves
+- **one draft production document and one draft cane ticket left unposted**, so
+  a tester can post them and watch the stock move
 - a second company with its own approved budget, so the consolidated report
   has more than one company to consolidate
 

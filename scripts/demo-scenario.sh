@@ -149,12 +149,57 @@ plan_matrix() { # plan_matrix <material> <process> <lineA> <qtyA> [<lineB> <qtyB
 	fi
 }
 
+CANE=$(mat "SUGARCANE"); CANEYARD=$(wh "CANEYARD")
+
 plan_matrix "$RAW"     "$MILLING"  "$L1" 3700 "$L2" 2500
 plan_matrix "$MOL"     "$MILLING"  "$L1" 1350
 plan_matrix "$BAG"     "$MILLING"  "$L1" 1600
 plan_matrix "$REFINED" "$REFINING" "$L3" 1900
 plan_matrix "$WHITE"   "$REFINING" "$L3" 660
 ok "seven days planned (two back, four ahead) for raw sugar, molasses, bagasse, refined and white sugar"
+
+# --- the cane that feeds all of it ----------------------------------------
+#
+# The harvest plan lives inside the same version as the production plan, so it
+# has to be written before the version is submitted for approval.
+
+step "Planning the cane supply"
+
+GROWERS=$(get "$PLANNER" "/companies/$C1/growers?size=100")
+grower() { echo "$GROWERS" | jq -r ".data[]|select(.growerCode==\"$1\")|.id"; }
+
+EST1=$(grower "EST-01"); EST2=$(grower "EST-02")
+OG1=$(grower "OG-101"); OG2=$(grower "OG-102"); OG3=$(grower "OG-103"); CT1=$(grower "CT-201")
+
+# The mill needs roughly 6 200 t of cane a day to make the raw sugar above, and
+# it comes from six growers: two own estates and four purchased suppliers.
+harvest_rows="[]"
+for offset in -2 -1 0 1 2 3 4; do
+	date=$(day "$offset")
+	swing=$(( 95 + ((offset + 2) * 7) % 11 ))
+	values=$(jq -nc \
+		--argjson e1 "$EST1" --argjson e2 "$EST2" --argjson o1 "$OG1" \
+		--argjson o2 "$OG2" --argjson o3 "$OG3" --argjson c1 "$CT1" \
+		--argjson s "$swing" \
+		'[{growerId:$e1, plannedTons:((1500*$s/100)|tostring)},
+		  {growerId:$e2, plannedTons:((1200*$s/100)|tostring)},
+		  {growerId:$o1, plannedTons:((1100*$s/100)|tostring)},
+		  {growerId:$o2, plannedTons:((1300*$s/100)|tostring)},
+		  {growerId:$o3, plannedTons:(( 500*$s/100)|tostring)},
+		  {growerId:$c1, plannedTons:(( 600*$s/100)|tostring)}]')
+	harvest_rows=$(jq -c --argjson v "$values" --arg d "$date" \
+		'. + [{planDate:$d, values:$v}]' <<<"$harvest_rows")
+done
+
+HARVEST=$(post "$PLANNER" "/harvest-plans/matrix?companyId=$C1" "$(jq -nc \
+	--argjson version "$V1" --argjson uom "$TON" \
+	--arg from "$(day -2)" --arg to "$(day 4)" --argjson rows "$harvest_rows" \
+	'{versionId:$version,uomId:$uom,dateFrom:$from,dateTo:$to,rows:$rows}')")
+if [ "$(jq -r '.success' <<<"$HARVEST")" = "true" ]; then
+	ok "seven days of harvest planned across two own estates and four purchased suppliers"
+else
+	warn "planning the harvest — $(jq -r '.error.code + \": \" + .error.message' <<<"$HARVEST")"
+fi
 
 step "Taking the budget through approval"
 post "$PLANNER"  "/planning-versions/$V1/submit?companyId=$C1"  '{}' >/dev/null
@@ -166,6 +211,65 @@ COPY=$(post "$PLANNER" "/planning-versions/$V1/copy?companyId=$C1" \
 	'{"versionName":"Forecast — working copy"}')
 V2=$(echo "$COPY" | jq -r '.data.id')
 ok "V$(echo "$COPY" | jq -r '.data.versionNo') is an independent snapshot of V1, left in DRAFT to edit"
+
+# --- cane deliveries ------------------------------------------------------
+#
+# The actual against the harvest plan. Each posted ticket writes an ordinary
+# inventory movement into the cane yard, so the cane obeys the same stock
+# rules as everything else.
+
+step "Preparing the weighbridge"
+
+VARIETIES=$(get "$OPERATOR" "/cane-varieties?size=100&companyId=$C1")
+K88=$(echo "$VARIETIES" | jq -r '.data[]|select(.varietyCode=="K88-92")|.id')
+
+# ticket <grower> <date> <gross> <tare> <ccs> -> delivery id
+ticket() {
+	local grower=$1 date=$2 gross=$3 tare=$4 ccs=$5
+	local body result
+	body=$(jq -nc --argjson g "$grower" --arg d "$date" --argjson w "$CANEYARD" \
+		--argjson v "$K88" --arg gross "$gross" --arg tare "$tare" --arg ccs "$ccs" \
+		'{deliveryDate:$d, growerId:$g, warehouseId:$w, varietyId:$v,
+		  grossTons:$gross, tareTons:$tare, ccsPct:$ccs, vehicleNo:"1AB-2345"}')
+	result=$(post "$OPERATOR" "/cane-deliveries?companyId=$C1" "$body")
+	if [ "$(jq -r '.success' <<<"$result")" != "true" ]; then
+		warn "cane ticket — $(jq -r '.error.code + \": \" + .error.message' <<<"$result")"
+		return 1
+	fi
+	jq -r '.data.id' <<<"$result"
+}
+
+# A ticket here stands for a consolidated day-lot rather than a single lorry:
+# a real yard weighs hundreds of loads a day, and seeding those one by one
+# would bury the screens without showing anything more. Three lots per grower
+# per day land the delivered tonnage near the planned tonnage, so the variance
+# a tester sees is the believable few per cent rather than an artefact of how
+# much demo data there was patience for.
+POSTED_TICKETS=0
+
+# weigh_in <date> — one day of cane across the six growers.
+weigh_in() {
+	local date=$1 offset=$2
+	for entry in "$EST1 500 13.4" "$EST2 400 13.1" "$OG1 365 13.9" \
+	             "$OG2 430 14.2" "$OG3 165 12.6" "$CT1 200 13.0"; do
+		set -- $entry
+		for lot in 1 2 3; do
+			# a deterministic wobble per lot, so no two loads are identical
+			gross=$(( $2 + (lot * 7 + offset * 3) ))
+			id=$(ticket "$1" "$date" "$gross" 14 "$3") || continue
+			result=$(post "$OPERATOR" "/cane-deliveries/$id/post?companyId=$C1" '{}')
+			if [ "$(jq -r '.data.postingStatus // empty' <<<"$result")" = "POSTED" ]; then
+				POSTED_TICKETS=$((POSTED_TICKETS + 1))
+			else
+				# A silently refused posting would leave the tester looking at a
+				# cane variance that is an artefact of this script, not of the data.
+				warn "ticket refused — $(jq -r '.error.code + ": " + .error.message' <<<"$result")"
+			fi
+		done
+	done
+}
+
+
 
 # --- actual production ----------------------------------------------------
 
@@ -211,6 +315,9 @@ for offset in -2 -1 0; do
 	DATE=$(day "$offset")
 	raw1=$(( 3600 + offset * 120 )); raw2=$(( 2400 + offset * 90 ))
 
+	# The bridge first: the mill can only issue cane that has been weighed in.
+	weigh_in "$DATE" "$offset"
+
 	items=$(jq -nc --argjson a "$(item "$RAW" "$RW1" "$raw1" "$TON" "$MILLING" "$L1")" \
 		--argjson b "$(item "$RAW" "$RW1" "$raw2" "$TON" "$MILLING" "$L2")" \
 		--argjson c "$(item "$MOL" "$MT1" "1320" "$TON" "$MILLING" "$L1")" \
@@ -220,7 +327,22 @@ for offset in -2 -1 0; do
 	if id=$(document "$RECEIPT" "$DATE" "$L1" "Milling output $DATE" "$items"); then
 		post_document "$id" "milling $DATE"
 	fi
+
+	# Milling consumes the cane that was weighed in. Without this the yard
+	# would only ever fill, and its capacity would be the thing that stopped
+	# the demo rather than anything a tester was meant to see.
+	if id=$(document "$ISSUE" "$DATE" "$L1" "Cane to the mill $DATE" \
+		"$(jq -nc --argjson a "$(item "$CANE" "$CANEYARD" "3900" "$TON" "$MILLING" "$L1")" '[$a]')"); then
+		post_document "$id" "cane issued to milling $DATE"
+	fi
 done
+
+ok "$POSTED_TICKETS cane tickets posted over three days — priced where the cane was bought"
+
+# One ticket is deliberately left as a draft so a tester can post it themselves
+# and watch the yard move.
+DRAFT_TICKET=$(ticket "$OG2" "$(day 0)" 435 14 14.0)
+ok "one cane ticket left in DRAFT for the tester to post"
 
 # The power plant burns bagasse and generates electricity, which is a
 # production quantity and never warehouse stock.
@@ -321,6 +443,11 @@ PVA=$(get "$PLANNER" "/reports/plan-vs-actual?companyId=$C1&seasonId=$SEASON&ver
 printf '\n  plan vs actual for the three days that have been produced\n'
 echo "$PVA" | jq -r '.data.lines[] |
 	"    \(.groupKey)\tplan \(.planQty)\tactual \(.actualQty)\tvariance \(.variance) (\(.variancePct // "n/a"))"'
+
+CANE=$(get "$PLANNER" "/reports/cane-plan-vs-actual?companyId=$C1&versionId=$V1&groupBy=supplyType&dateFrom=$(day -2)&dateTo=$(day 0)")
+printf '\n  cane: planned harvest against what the bridge weighed\n'
+echo "$CANE" | jq -r '.data[] |
+	"    \(.groupLabel)\tplan \(.plannedTons)\tactual \(.actualTons)\tvariance \(.variancePct // "n/a")\tvalue \(.purchaseValue // "-")"'
 
 printf '\n'
 ok "the system is populated and ready for testing"

@@ -31,6 +31,11 @@
 					<TileContent><ImageContent src="sap-icon://table-view"/></TileContent>
 				</GenericTile>
 
+				<GenericTile header="{i18n>tileCane}" subheader="{i18n>tileCaneSub}"
+					press=".onOpenCane" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://nutrition-activity"/></TileContent>
+				</GenericTile>
+
 				<GenericTile header="{i18n>tileVersions}" subheader="{i18n>tileVersionsSub}"
 					press=".onOpenVersions" class="sapUiTinyMargin sugarTile">
 					<TileContent><ImageContent src="sap-icon://versions"/></TileContent>
@@ -49,6 +54,11 @@
 				<GenericTile header="{i18n>tilePlanVsActual}" subheader="{i18n>tilePlanVsActualSub}"
 					press=".onOpenPlanVsActual" class="sapUiTinyMargin sugarTile">
 					<TileContent><ImageContent src="sap-icon://business-objects-experience"/></TileContent>
+				</GenericTile>
+
+				<GenericTile header="{i18n>tileMasterData}" subheader="{i18n>tileMasterDataSub}"
+					press=".onOpenMasterData" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://official-service"/></TileContent>
 				</GenericTile>
 
 				<GenericTile header="{i18n>tileBrowser}" subheader="{i18n>tileBrowserSub}"
