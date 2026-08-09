@@ -45,6 +45,16 @@ make web                                  # UI on :8081, /api proxied to :8080
 
 `make help` lists the rest.
 
+### A prototype you can just open
+
+[`docs/prototype/index.html`](docs/prototype/index.html) is a single
+self-contained page that mirrors the screens and ports the rules — the
+variance `n/a`, the null capacity, the status machine, four eyes, the silo
+routing, the capacity and negative-stock refusals, purchased versus own-estate
+cane. It needs no database and no network, which makes it the quickest way to
+put the system in front of someone. It is not connected to the service; where
+the two disagree, the service is right.
+
 ### Loading a dataset to test against
 
 Master data alone leaves every screen empty. To put a working campaign in
