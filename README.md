@@ -1,9 +1,10 @@
 # Sugar Production Planning
 
 Multi-company production planning versus actual for a sugar mill and refinery:
-plan what each production line should make on each day, record what it actually
-made, keep the stock ledger that follows from it, and report the variance —
-across several legally separate companies from one login.
+plan where the cane comes from and what each production line should make on
+each day, record what actually arrived and what was actually made, keep the
+stock ledger that follows from it, and report the variance — across several
+legally separate companies from one login.
 
 Built to [`docs/TECHNICAL_SPECIFICATION.md`](docs/TECHNICAL_SPECIFICATION.md).
 The material flow it models is in
@@ -86,6 +87,7 @@ backend/                 Go service
   internal/middleware/   request id, logging, recovery, CORS, authorization
   internal/router/       the REST contract, with each route's permission
   migrations/            SQL migrations, embedded in the binary
+    demo/                demo data — its own source, applied only in DEV/SIT
   tests/                 integration tests against a real PostgreSQL
 frontend/webapp/         SAP UI5 application
 docs/openapi.yaml        the API contract
@@ -117,12 +119,53 @@ Permissions resolve per *(user, company)*. The same user is a planner in one
 company and a display user in the next, so the permission cache is keyed on the
 pair — never on the user alone.
 
-### The planning matrix round-trips
+### The planning matrix round-trips, and plans the whole plant at once
 
 Planning is a Date × Line grid. Its columns are the production lines of the
 selected company, generated at runtime. The save is an idempotent upsert keyed
 on `(document, date, line, material, process)`, so replaying a payload produces
 the same grid rather than duplicate rows.
+
+A planner works on a week of the whole plant, not on one product at a time, so
+the same endpoint takes several products in one payload:
+
+```jsonc
+POST /plans/matrix
+{ "versionId": 4, "dateFrom": "…", "dateTo": "…",
+  "series": [ { "materialId": …, "processId": …, "rows": [ … ] },   // raw sugar
+              { "materialId": …, "processId": …, "rows": [ … ] } ] } // molasses
+```
+
+All of it lands in one transaction: a rejected cell in the fourth product rolls
+the first three back rather than leaving a half-saved week. Deletion of omitted
+cells stays scoped to the product that was saved, so writing raw sugar never
+clears the molasses grid beside it. `GET /plans/matrix/all` returns every
+product a version plans over a window, which is what the planning screen opens
+on; the single-product `GET`/`POST` shape still works unchanged.
+
+### Cane comes from somewhere
+
+Upstream of the mill plan is the cane supply plan: which growers and which
+fields deliver how much, on which day. It is a Date × Grower grid that lives
+inside the *same* planning version as the production plan, so one submission,
+one approval and one status machine cover both — and a version that has been
+approved refuses cane edits with the same `E-PLAN-007` the production plan
+uses, enforced in the service and again by a database trigger.
+
+Own-estate cane and **purchased cane** are planned in the same grid and
+reported apart, because only purchased cane carries a supply contract, a
+contracted tonnage and a price per tonne. The price is copied onto the
+weighbridge ticket when the load is recorded, not read through a join:
+re-negotiating a contract must not rewrite what an already-delivered lorry was
+worth. A load with no agreed price has an unknown value — reported as absent,
+never as zero.
+
+The actual against that plan is the weighbridge ticket. Its net weight is a
+generated column, so no code path can leave gross, tare and net disagreeing,
+and posting one writes an ordinary inventory movement for the net weight.
+Cane is therefore not a special case anywhere in the ledger: capacity, negative
+stock, the open season and the location's allowed materials all apply to it
+exactly as they apply to sugar.
 
 Two things that look alike but are not: a `null` quantity means *leave this
 value alone*, while a cell the payload omits is *deleted* — unless
@@ -162,6 +205,17 @@ a master-data change. Three checks enforce it at posting time:
 | a non-conditioned grade is received into a silo | `E-PROD-021` |
 | a conditioned grade is received straight into finished goods | `E-PROD-022` |
 
+### A tank and a condition silo are warehouses, not new entities
+
+Master data maintenance covers company, material, warehouse, condition silo and
+tank. The last three are one table: a tank and a silo are warehouses whose
+`warehouseType` differs, so they share the optimistic lock, the capacity rule,
+the audit trail and the material restriction rather than duplicating them.
+`GET /companies/{id}/tanks` and `.../condition-silos` are the type-filtered
+views the maintenance screens open on, and
+`PUT /companies/{id}/warehouses/{id}/materials` maintains what a location may
+hold on its own — the same restriction the posting rules read.
+
 ### Nothing is deleted
 
 Master data is deactivated. Documents are reversed: the original movement stays
@@ -195,7 +249,7 @@ make unit     # only the tests that need no database
 make cover    # statement coverage per package
 ```
 
-88 tests. The unit tests pin the pure rules — the variance formula, the status
+108 tests. The unit tests pin the pure rules — the variance formula, the status
 machine, argon2id handling. The integration tests boot the real dependency
 graph from `internal/app` against a real PostgreSQL, so they exercise the
 production wiring including the middleware chain, the triggers and the
@@ -203,6 +257,10 @@ exclusion constraints. They cover:
 
 - company isolation and per-company permissions
 - the matrix round trip, its idempotency, and delete-versus-leave-alone
+- several products planned over several days in one atomic call
+- purchased versus own-estate cane, the harvest grid and its freeze on approval
+- weighbridge tickets: derived net weight, posting to stock, reversal
+- master data maintenance, including the tank and silo views
 - copy independence, the status machine, four-eyes approval
 - posting, reversal, negative stock, capacity bands, unit conversion
 - the silo routing rules, including the valid conditioning route
@@ -222,6 +280,11 @@ which need fault injection rather than more scenarios.
 ---
 
 ## Configuration
+
+Demo data lives in its own migration source (`backend/migrations/demo`) with
+its own version sequence and its own tracking table, so reference data can
+always be added after it. A database migrated before that split records
+version 3 for the retired demo migration and must be recreated.
 
 Everything comes from the environment; see
 [`backend/.env.example`](backend/.env.example). Nothing outside

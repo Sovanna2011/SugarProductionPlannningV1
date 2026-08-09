@@ -16,6 +16,8 @@ var defaultPrefixes = map[string]string{
 	"ACTUAL":    "ACT",
 	"INVENTORY": "INV",
 	"TRANSFER":  "TRF",
+	"HARVEST":   "HARV",
+	"DELIVERY":  "CANE",
 }
 
 // NumberRangeService implements §F1. It must be called inside the caller's

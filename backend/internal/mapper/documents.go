@@ -2,6 +2,7 @@ package mapper
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/shopspring/decimal"
 
@@ -98,11 +99,46 @@ func PlanItemFromDTO(req dto.PlanItemRequest, headerID int64) model.PlanItem {
 	}
 }
 
-// MatrixRequestFromDTO flattens the row/value grid into the cell list the
-// service works with.
-func MatrixRequestFromDTO(req dto.MatrixSaveRequest, companyID int64) service.MatrixRequest {
+// MatrixSetRequestFromDTO flattens the row/value grids into the cell lists the
+// service works with. A payload that names one product at the top level and a
+// payload carrying a series array both arrive here as a set — the single
+// product is simply a set of one.
+func MatrixSetRequestFromDTO(req dto.MatrixSaveRequest, companyID int64) service.MatrixSetRequest {
+	set := service.MatrixSetRequest{
+		CompanyID:     companyID,
+		SeasonID:      req.SeasonID,
+		VersionID:     req.VersionID,
+		DateFrom:      req.DateFrom.Time,
+		DateTo:        req.DateTo.Time,
+		PartialUpdate: req.PartialUpdate,
+	}
+
+	if req.MaterialID != 0 {
+		set.Series = append(set.Series, service.MatrixSeriesInput{
+			MovementTypeID: req.MovementTypeID,
+			MaterialID:     req.MaterialID,
+			ProcessID:      req.ProcessID,
+			WarehouseID:    req.WarehouseID,
+			UOMID:          req.UOMID,
+			Cells:          matrixCells(req.Rows),
+		})
+	}
+	for _, series := range req.Series {
+		set.Series = append(set.Series, service.MatrixSeriesInput{
+			MovementTypeID: series.MovementTypeID,
+			MaterialID:     series.MaterialID,
+			ProcessID:      series.ProcessID,
+			WarehouseID:    series.WarehouseID,
+			UOMID:          series.UOMID,
+			Cells:          matrixCells(series.Rows),
+		})
+	}
+	return set
+}
+
+func matrixCells(rows []dto.MatrixRowRequest) []service.MatrixCellInput {
 	cells := make([]service.MatrixCellInput, 0)
-	for _, row := range req.Rows {
+	for _, row := range rows {
 		for _, value := range row.Values {
 			cells = append(cells, service.MatrixCellInput{
 				PlanDate:         row.PlanDate.Time,
@@ -111,20 +147,30 @@ func MatrixRequestFromDTO(req dto.MatrixSaveRequest, companyID int64) service.Ma
 			})
 		}
 	}
-	return service.MatrixRequest{
-		CompanyID:      companyID,
-		SeasonID:       req.SeasonID,
-		VersionID:      req.VersionID,
-		MovementTypeID: req.MovementTypeID,
-		MaterialID:     req.MaterialID,
-		ProcessID:      req.ProcessID,
-		WarehouseID:    req.WarehouseID,
-		UOMID:          req.UOMID,
-		DateFrom:       req.DateFrom.Time,
-		DateTo:         req.DateTo.Time,
-		Cells:          cells,
-		PartialUpdate:  req.PartialUpdate,
+	return cells
+}
+
+// MatrixSetToDTO renders every product's grid under one set of dates and
+// lines, which is what a screen showing the whole plan needs.
+func MatrixSetToDTO(companyID, versionID int64, from, to time.Time,
+	series []service.MatrixResponse) dto.MatrixSetResponse {
+
+	out := dto.MatrixSetResponse{
+		CompanyID: companyID,
+		VersionID: versionID,
+		DateFrom:  dto.NewDate(from),
+		DateTo:    dto.NewDate(to),
+		Series:    make([]dto.MatrixResponse, 0, len(series)),
 	}
+	for i := range series {
+		grid := MatrixToDTO(&series[i])
+		if i == 0 {
+			out.VersionStatus = grid.VersionStatus
+			out.Lines = grid.Lines
+		}
+		out.Series = append(out.Series, grid)
+	}
+	return out
 }
 
 func MatrixToDTO(matrix *service.MatrixResponse) dto.MatrixResponse {
@@ -160,7 +206,12 @@ func MatrixToDTO(matrix *service.MatrixResponse) dto.MatrixResponse {
 		VersionStatus:  matrix.VersionStatus,
 		MovementTypeID: matrix.MovementTypeID,
 		MaterialID:     matrix.MaterialID,
+		MaterialCode:   matrix.MaterialCode,
+		MaterialName:   matrix.MaterialName,
 		ProcessID:      matrix.ProcessID,
+		ProcessCode:    matrix.ProcessCode,
+		UOMID:          matrix.UOMID,
+		UOMCode:        matrix.UOMCode,
 		DateFrom:       dto.NewDate(matrix.DateFrom),
 		DateTo:         dto.NewDate(matrix.DateTo),
 		Lines:          lines,

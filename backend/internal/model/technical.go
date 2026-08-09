@@ -13,6 +13,8 @@ const (
 	NumberObjectActual    = "ACTUAL"
 	NumberObjectInventory = "INVENTORY"
 	NumberObjectTransfer  = "TRANSFER"
+	NumberObjectHarvest   = "HARVEST"
+	NumberObjectDelivery  = "DELIVERY"
 )
 
 type NumberRange struct {

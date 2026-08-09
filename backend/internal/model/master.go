@@ -36,6 +36,11 @@ func (c UOMConversion) Convert(qty decimal.Decimal) decimal.Decimal {
 
 // --- materials -----------------------------------------------------------
 
+// MaterialGroupCane is the group cane materials belong to. The cane supply
+// module resolves its default material through the group rather than through a
+// material code, so a second cane grade is master data, not a code change.
+const MaterialGroupCane = "CANE"
+
 const (
 	MaterialTypeRaw          = "RAW"
 	MaterialTypeSemiFinished = "SEMI_FINISHED"

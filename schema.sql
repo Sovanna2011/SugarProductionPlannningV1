@@ -1007,7 +1007,364 @@ JOIN processes  pr ON pr.process_code  = x.process_code
 JOIN materials  ma ON ma.material_code = x.material_code
 ON CONFLICT (process_id, material_id, io_type) DO NOTHING;
 
--- ===== 0003_demo_master_data.up.sql =====
+-- ===== 0004_cane_supply.up.sql =====
+-- =====================================================================
+-- Sugarcane supply: growers, fields, the harvest plan and the deliveries
+-- that are its actual.
+--
+-- The mill plan answers "what will each line produce"; this answers the
+-- question upstream of it — "where does the cane come from, on which day,
+-- and how much of it actually arrived". It reuses what already exists
+-- rather than duplicating it:
+--
+--   * the harvest plan hangs off planning_versions, so one version carries
+--     both the cane plan and the production plan through one status
+--     machine and one approval;
+--   * a posted delivery writes an ordinary inventory movement, so cane
+--     stock, capacity and the ledger need no special case;
+--   * the same audit, optimistic-lock and logical-delete columns apply.
+--
+-- Version numbering note: 0003 was the demo master data, which now lives
+-- in its own migration source (migrations/demo). The number is retired
+-- rather than reused so that a database migrated before the split fails
+-- loudly instead of silently skipping this migration.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- Cane varieties — cross-company master data, like materials (§14)
+-- ---------------------------------------------------------------------
+CREATE TABLE cane_varieties (
+    id                BIGSERIAL PRIMARY KEY,
+    variety_code      VARCHAR(30)  NOT NULL UNIQUE,
+    variety_name      VARCHAR(200) NOT NULL,
+    maturity_months   INTEGER      CHECK (maturity_months IS NULL OR maturity_months > 0),
+    -- Commercial cane sugar: the recoverable sugar per tonne of cane,
+    -- expressed as a percentage. NULL means "not maintained", never zero.
+    typical_ccs_pct   NUMERIC(9,4) CHECK (typical_ccs_pct IS NULL OR (typical_ccs_pct >= 0 AND typical_ccs_pct <= 100)),
+    description       TEXT,
+    is_active         BOOLEAN     NOT NULL DEFAULT TRUE,
+    version           INTEGER     NOT NULL DEFAULT 1,
+    created_by        BIGINT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    changed_by        BIGINT,
+    changed_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------
+-- Growers — company-dependent master data
+-- ---------------------------------------------------------------------
+CREATE TABLE growers (
+    id              BIGSERIAL PRIMARY KEY,
+    company_id      BIGINT NOT NULL REFERENCES companies(id),
+    grower_code     VARCHAR(20)  NOT NULL,
+    grower_name     VARCHAR(200) NOT NULL,
+    grower_type     VARCHAR(20)  NOT NULL DEFAULT 'OUT_GROWER'
+        CHECK (grower_type IN ('ESTATE','OUT_GROWER','CONTRACTOR')),
+    -- Own cane comes off the company's own estates; purchased cane is bought
+    -- in under a supply contract. The two are planned in the same matrix but
+    -- reported apart, because only purchased cane carries a cane bill.
+    supply_type     VARCHAR(20)  NOT NULL DEFAULT 'PURCHASED'
+        CHECK (supply_type IN ('OWN_ESTATE','PURCHASED')),
+    zone            VARCHAR(60),
+    contact_name    VARCHAR(200),
+    contact_phone   VARCHAR(40),
+    -- The tonnage the grower is contracted to deliver this season. NULL is
+    -- "no contract quantity agreed" — it is not a zero commitment.
+    contract_tons   NUMERIC(18,3) CHECK (contract_tons IS NULL OR contract_tons >= 0),
+    contract_no     VARCHAR(40),
+    -- Contract price per tonne of cane. NULL means "not agreed yet", which is
+    -- why a purchased-cane value is reported as unavailable rather than zero.
+    price_per_ton   NUMERIC(18,4) CHECK (price_per_ton IS NULL OR price_per_ton >= 0),
+    currency        CHAR(3),
+    transport_km    NUMERIC(9,2)  CHECK (transport_km IS NULL OR transport_km >= 0),
+    is_active       BOOLEAN     NOT NULL DEFAULT TRUE,
+    version         INTEGER     NOT NULL DEFAULT 1,
+    created_by      BIGINT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    changed_by      BIGINT,
+    changed_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (company_id, grower_code),
+    -- referenced by the composite foreign keys below, which is how a
+    -- cane document is stopped from joining two companies (§C2 / E-VAL-010)
+    UNIQUE (id, company_id)
+);
+CREATE INDEX ix_growers_company_zone ON growers(company_id, zone);
+CREATE INDEX ix_growers_supply_type ON growers(company_id, supply_type);
+
+-- ---------------------------------------------------------------------
+-- Cane fields (plots) — the unit a harvest is actually planned on
+-- ---------------------------------------------------------------------
+CREATE TABLE cane_fields (
+    id                    BIGSERIAL PRIMARY KEY,
+    company_id            BIGINT NOT NULL REFERENCES companies(id),
+    grower_id             BIGINT NOT NULL,
+    variety_id            BIGINT REFERENCES cane_varieties(id),
+    field_code            VARCHAR(20)  NOT NULL,
+    field_name            VARCHAR(200) NOT NULL,
+    area_ha               NUMERIC(12,3) NOT NULL CHECK (area_ha > 0),
+    -- Expected yield in tonnes per hectare. With the area above it gives the
+    -- tonnage the planner starts from; NULL means the field has no yield
+    -- history yet and the planner enters tonnes directly.
+    expected_yield_tph    NUMERIC(12,3) CHECK (expected_yield_tph IS NULL OR expected_yield_tph > 0),
+    crop_cycle            VARCHAR(20) NOT NULL DEFAULT 'PLANT'
+        CHECK (crop_cycle IN ('PLANT','RATOON_1','RATOON_2','RATOON_3','RATOON_4_PLUS')),
+    planting_date         DATE,
+    expected_harvest_from DATE,
+    expected_harvest_to   DATE,
+    zone                  VARCHAR(60),
+    is_irrigated          BOOLEAN     NOT NULL DEFAULT FALSE,
+    is_active             BOOLEAN     NOT NULL DEFAULT TRUE,
+    version               INTEGER     NOT NULL DEFAULT 1,
+    created_by            BIGINT,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    changed_by            BIGINT,
+    changed_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (expected_harvest_to IS NULL OR expected_harvest_from IS NULL
+           OR expected_harvest_to >= expected_harvest_from),
+    UNIQUE (company_id, field_code),
+    UNIQUE (id, company_id),
+    FOREIGN KEY (grower_id, company_id) REFERENCES growers(id, company_id)
+);
+CREATE INDEX ix_cane_fields_grower ON cane_fields(company_id, grower_id);
+
+-- ---------------------------------------------------------------------
+-- Harvest plan — the Date × Grower matrix, inside a planning version
+-- ---------------------------------------------------------------------
+CREATE TABLE harvest_plan_headers (
+    id                  BIGSERIAL PRIMARY KEY,
+    company_id          BIGINT NOT NULL REFERENCES companies(id),
+    season_id           BIGINT NOT NULL REFERENCES seasons(id),
+    planning_version_id BIGINT NOT NULL REFERENCES planning_versions(id) ON DELETE CASCADE,
+    document_no         VARCHAR(40) NOT NULL,
+    description         VARCHAR(255),
+    date_from           DATE NOT NULL,
+    date_to             DATE NOT NULL,
+    is_active           BOOLEAN     NOT NULL DEFAULT TRUE,
+    version             INTEGER     NOT NULL DEFAULT 1,
+    created_by          BIGINT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    changed_by          BIGINT,
+    changed_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (date_to >= date_from),
+    UNIQUE (company_id, document_no),
+    -- one harvest document per version: the matrix spans every grower, so
+    -- there is nothing to split it by
+    UNIQUE (company_id, planning_version_id)
+);
+
+CREATE TABLE harvest_plan_items (
+    id                     BIGSERIAL PRIMARY KEY,
+    harvest_plan_header_id BIGINT NOT NULL REFERENCES harvest_plan_headers(id) ON DELETE CASCADE,
+    plan_date              DATE   NOT NULL,
+    grower_id              BIGINT NOT NULL REFERENCES growers(id),
+    cane_field_id          BIGINT REFERENCES cane_fields(id),
+    variety_id             BIGINT REFERENCES cane_varieties(id),
+    planned_tons           NUMERIC(18,3) NOT NULL CHECK (planned_tons >= 0),
+    uom_id                 BIGINT NOT NULL REFERENCES uoms(id),
+    planned_area_ha        NUMERIC(12,3) CHECK (planned_area_ha IS NULL OR planned_area_ha >= 0),
+    expected_ccs_pct       NUMERIC(9,4)  CHECK (expected_ccs_pct IS NULL OR (expected_ccs_pct >= 0 AND expected_ccs_pct <= 100)),
+    remark                 VARCHAR(500),
+    is_active              BOOLEAN     NOT NULL DEFAULT TRUE,
+    version                INTEGER     NOT NULL DEFAULT 1,
+    created_by             BIGINT,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    changed_by             BIGINT,
+    changed_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- The business key of the Date × Grower grid. NULLS NOT DISTINCT so that a
+-- row planned on the grower without naming a field still collides with
+-- itself on replay, exactly as the production matrix does (§28).
+CREATE UNIQUE INDEX ux_harvest_plan_items_business_key
+    ON harvest_plan_items (harvest_plan_header_id, plan_date, grower_id, cane_field_id)
+    NULLS NOT DISTINCT;
+CREATE INDEX ix_harvest_plan_items_date ON harvest_plan_items(harvest_plan_header_id, plan_date);
+
+-- ---------------------------------------------------------------------
+-- Cane deliveries — the actual against the harvest plan
+--
+-- A weighbridge ticket. Posting one writes an ordinary inventory movement
+-- for the net weight, so cane behaves like any other stock.
+-- ---------------------------------------------------------------------
+CREATE TABLE cane_deliveries (
+    id                BIGSERIAL PRIMARY KEY,
+    company_id        BIGINT NOT NULL REFERENCES companies(id),
+    season_id         BIGINT REFERENCES seasons(id),
+    document_no       VARCHAR(40) NOT NULL,
+    delivery_date     DATE   NOT NULL,
+    grower_id         BIGINT NOT NULL,
+    cane_field_id     BIGINT,
+    variety_id        BIGINT REFERENCES cane_varieties(id),
+    material_id       BIGINT NOT NULL REFERENCES materials(id),
+    movement_type_id  BIGINT NOT NULL REFERENCES movement_types(id),
+    warehouse_id      BIGINT REFERENCES warehouses(id),
+    uom_id            BIGINT NOT NULL REFERENCES uoms(id),
+    ticket_no         VARCHAR(40),
+    vehicle_no        VARCHAR(30),
+    gross_tons        NUMERIC(18,3) NOT NULL CHECK (gross_tons > 0),
+    tare_tons         NUMERIC(18,3) NOT NULL DEFAULT 0 CHECK (tare_tons >= 0),
+    -- Net weight is derived, never entered: a stored generated column means
+    -- no code path can leave it disagreeing with gross and tare.
+    net_tons          NUMERIC(18,3) GENERATED ALWAYS AS (gross_tons - tare_tons) STORED,
+    -- The contract price is copied from the grower when the ticket is
+    -- recorded, not read through a join: re-negotiating a contract must not
+    -- rewrite what an already-delivered load was worth.
+    price_per_ton     NUMERIC(18,4) CHECK (price_per_ton IS NULL OR price_per_ton >= 0),
+    currency          CHAR(3),
+    ccs_pct           NUMERIC(9,4) CHECK (ccs_pct IS NULL OR (ccs_pct >= 0 AND ccs_pct <= 100)),
+    trash_pct         NUMERIC(9,4) CHECK (trash_pct IS NULL OR (trash_pct >= 0 AND trash_pct <= 100)),
+    is_burnt          BOOLEAN     NOT NULL DEFAULT FALSE,
+    posting_status    VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
+        CHECK (posting_status IN ('DRAFT','POSTED','REVERSED')),
+    posted_by         BIGINT REFERENCES users(id),
+    posted_at         TIMESTAMPTZ,
+    reversed_by       BIGINT REFERENCES users(id),
+    reversed_at       TIMESTAMPTZ,
+    idempotency_key   VARCHAR(80),
+    remark            VARCHAR(500),
+    is_active         BOOLEAN     NOT NULL DEFAULT TRUE,
+    version           INTEGER     NOT NULL DEFAULT 1,
+    created_by        BIGINT,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    changed_by        BIGINT,
+    changed_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (gross_tons > tare_tons),
+    UNIQUE (company_id, document_no),
+    FOREIGN KEY (grower_id, company_id)     REFERENCES growers(id, company_id),
+    FOREIGN KEY (cane_field_id, company_id) REFERENCES cane_fields(id, company_id)
+);
+CREATE INDEX ix_cane_deliveries_date   ON cane_deliveries(company_id, delivery_date);
+CREATE INDEX ix_cane_deliveries_grower ON cane_deliveries(company_id, grower_id, delivery_date);
+-- A weighbridge ticket number is unique per company where it is given at all.
+CREATE UNIQUE INDEX ux_cane_deliveries_ticket
+    ON cane_deliveries(company_id, ticket_no) WHERE ticket_no IS NOT NULL;
+CREATE UNIQUE INDEX ux_cane_deliveries_idempotency
+    ON cane_deliveries(company_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+-- ---------------------------------------------------------------------
+-- §F3 status guard for the harvest plan — the same rule and the same error
+-- code as the production plan, so no code path can write cane data into an
+-- approved or locked version either.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION fn_harvest_plan_status_guard() RETURNS TRIGGER AS $$
+DECLARE
+    v_status TEXT;
+BEGIN
+    IF TG_TABLE_NAME = 'harvest_plan_items' THEN
+        SELECT pv.status INTO v_status
+          FROM harvest_plan_headers hh
+          JOIN planning_versions pv ON pv.id = hh.planning_version_id
+         WHERE hh.id = COALESCE(NEW.harvest_plan_header_id, OLD.harvest_plan_header_id);
+    ELSE
+        SELECT pv.status INTO v_status
+          FROM planning_versions pv
+         WHERE pv.id = COALESCE(NEW.planning_version_id, OLD.planning_version_id);
+    END IF;
+
+    IF v_status IN ('APPROVED','LOCKED','CANCELLED') THEN
+        RAISE EXCEPTION
+            'E-PLAN-007: planning version is % and cannot be modified', v_status
+            USING ERRCODE = 'raise_exception';
+    END IF;
+
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_harvest_plan_items_status_guard
+    BEFORE INSERT OR UPDATE OR DELETE ON harvest_plan_items
+    FOR EACH ROW EXECUTE FUNCTION fn_harvest_plan_status_guard();
+
+CREATE TRIGGER trg_harvest_plan_headers_status_guard
+    BEFORE INSERT OR UPDATE OR DELETE ON harvest_plan_headers
+    FOR EACH ROW EXECUTE FUNCTION fn_harvest_plan_status_guard();
+
+-- A delivery may never send cane into another company's yard.
+CREATE OR REPLACE FUNCTION fn_delivery_company_guard() RETURNS TRIGGER AS $$
+DECLARE
+    v_wh_company BIGINT;
+BEGIN
+    IF NEW.warehouse_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+    SELECT company_id INTO v_wh_company FROM warehouses WHERE id = NEW.warehouse_id;
+    IF v_wh_company IS DISTINCT FROM NEW.company_id THEN
+        RAISE EXCEPTION
+            'E-VAL-010: cross-company reference — warehouse % does not belong to company %',
+            NEW.warehouse_id, NEW.company_id
+            USING ERRCODE = 'raise_exception';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_cane_delivery_company_guard
+    BEFORE INSERT OR UPDATE ON cane_deliveries
+    FOR EACH ROW EXECUTE FUNCTION fn_delivery_company_guard();
+
+-- ---------------------------------------------------------------------
+-- Permissions (<MODULE>.<OBJECT>.<ACTION>)
+-- ---------------------------------------------------------------------
+INSERT INTO permissions (permission_code, module, description) VALUES
+    ('CANE.VARIETY.VIEW',   'CANE',   'Display cane varieties'),
+    ('CANE.VARIETY.EDIT',   'CANE',   'Maintain cane varieties'),
+    ('CANE.GROWER.VIEW',    'CANE',   'Display growers'),
+    ('CANE.GROWER.EDIT',    'CANE',   'Maintain growers'),
+    ('CANE.FIELD.VIEW',     'CANE',   'Display cane fields'),
+    ('CANE.FIELD.EDIT',     'CANE',   'Maintain cane fields'),
+    ('CANE.PLAN.VIEW',      'CANE',   'Display the harvest plan'),
+    ('CANE.PLAN.EDIT',      'CANE',   'Maintain the harvest plan matrix'),
+    ('CANE.DELIVERY.VIEW',  'CANE',   'Display cane deliveries'),
+    ('CANE.DELIVERY.CREATE','CANE',   'Record a cane delivery'),
+    ('CANE.DELIVERY.EDIT',  'CANE',   'Change a draft cane delivery'),
+    ('CANE.DELIVERY.POST',  'CANE',   'Post a cane delivery to stock'),
+    ('CANE.DELIVERY.REVERSE','CANE',  'Reverse a posted cane delivery'),
+    ('REPORT.CANE.VIEW',    'REPORT', 'Display the cane plan vs actual report')
+ON CONFLICT (permission_code) DO NOTHING;
+
+-- The role → permission statements of 0002 are re-run so that the families
+-- they describe pick up the permissions added above. They are expressed as
+-- patterns for exactly this reason.
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.role_code = 'ADMIN'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.role_code = 'PLANNER'
+  AND (p.permission_code LIKE '%.VIEW'
+       OR p.permission_code IN ('CANE.PLAN.EDIT','CANE.GROWER.EDIT','CANE.FIELD.EDIT',
+                                'CANE.VARIETY.EDIT'))
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.role_code IN ('APPROVER','INVENTORY','VIEWER')
+  AND p.permission_code LIKE '%.VIEW'
+ON CONFLICT DO NOTHING;
+
+INSERT INTO role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM roles r, permissions p
+WHERE r.role_code = 'OPERATOR'
+  AND (p.permission_code LIKE '%.VIEW'
+       OR p.permission_code IN ('CANE.DELIVERY.CREATE','CANE.DELIVERY.EDIT',
+                                'CANE.DELIVERY.POST','CANE.DELIVERY.REVERSE'))
+ON CONFLICT DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- Number ranges for the two new document types, for every company that
+-- already has ranges maintained (§35).
+-- ---------------------------------------------------------------------
+INSERT INTO number_ranges (company_id, object_type, fiscal_year, prefix, current_no, length)
+SELECT DISTINCT nr.company_id, o.object_type, nr.fiscal_year, o.prefix, 0, 6
+FROM number_ranges nr
+CROSS JOIN (VALUES
+    ('HARVEST',  'HARV'),
+    ('DELIVERY', 'CANE')
+) AS o(object_type, prefix)
+ON CONFLICT (company_id, object_type, fiscal_year) DO NOTHING;
+
+-- ===== 0001_demo_master_data.up.sql =====
 -- =====================================================================
 -- Demo master data (DEV / SIT only — guarded by MIGRATE_INCLUDE_DEMO).
 -- Models the plant layout of the inventory / material flow diagram.
@@ -1141,3 +1498,97 @@ CROSS JOIN (VALUES
 CROSS JOIN (VALUES (EXTRACT(YEAR FROM now())::int), (EXTRACT(YEAR FROM now())::int + 1)) AS y(fy)
 WHERE c.company_code IN ('1000','2000','3000')
 ON CONFLICT (company_id, object_type, fiscal_year) DO NOTHING;
+
+-- ===== 0002_demo_cane_data.up.sql =====
+-- =====================================================================
+-- Demo cane supply data (DEV / SIT only).
+--
+-- Two supply sources, because the difference is the point of the module:
+-- the company's own estates, and purchased cane bought in from
+-- out-growers and harvesting contractors under a priced contract.
+-- =====================================================================
+
+INSERT INTO cane_varieties (variety_code, variety_name, maturity_months, typical_ccs_pct, description) VALUES
+    ('K88-92',  'Khon Kaen 88-92',   11, 13.8000, 'High yield, good ratooning, the estate workhorse'),
+    ('KPS01',   'Kasetsart 01',      12, 14.6000, 'High CCS, prefers irrigated land'),
+    ('LK92-11', 'Lam Kok 92-11',     10, 12.9000, 'Early maturing, opens the season'),
+    ('VMC86',   'VMC 86-550',        13, 14.2000, 'Late maturing, drought tolerant'),
+    ('F156',    'Formosa 156',       12, 13.1000, 'Older variety, still grown by smallholders')
+ON CONFLICT (variety_code) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- Growers
+-- ---------------------------------------------------------------------
+INSERT INTO growers
+    (company_id, grower_code, grower_name, grower_type, supply_type, zone,
+     contact_name, contact_phone, contract_tons, contract_no, price_per_ton, currency, transport_km)
+SELECT c.id, g.code, g.name, g.gtype, g.supply, g.zone,
+       g.contact, g.phone, g.tons, g.contract, g.price, g.currency, g.km
+FROM (VALUES
+    ('1000', 'EST-01', 'Company Estate North',       'ESTATE',     'OWN_ESTATE', 'North',
+     'Estate Office',     '+855 12 000 101', NULL::numeric,   NULL,        NULL::numeric,  NULL,  8.5::numeric),
+    ('1000', 'EST-02', 'Company Estate River',       'ESTATE',     'OWN_ESTATE', 'River',
+     'Estate Office',     '+855 12 000 102', NULL::numeric,   NULL,        NULL::numeric,  NULL,  12.0::numeric),
+    ('1000', 'OG-101', 'Sok Thida Farm',             'OUT_GROWER', 'PURCHASED',  'North',
+     'Sok Thida',         '+855 12 111 201', 18000::numeric,  'CN-1000-01', 31.5000::numeric, 'USD', 22.0::numeric),
+    ('1000', 'OG-102', 'Chan Dara Plantation',       'OUT_GROWER', 'PURCHASED',  'East',
+     'Chan Dara',         '+855 12 111 202', 24000::numeric,  'CN-1000-02', 32.2500::numeric, 'USD', 31.5::numeric),
+    ('1000', 'OG-103', 'Mekong Smallholder Group',   'OUT_GROWER', 'PURCHASED',  'River',
+     'Group Secretary',   '+855 12 111 203', 9000::numeric,   'CN-1000-03', 30.0000::numeric, 'USD', 44.0::numeric),
+    ('1000', 'CT-201', 'Angkor Harvest Contractors', 'CONTRACTOR', 'PURCHASED',  'South',
+     'Operations Desk',   '+855 12 111 301', 12000::numeric,  'CN-1000-04', 33.7500::numeric, 'USD', 18.0::numeric),
+    ('2000', 'EST-01', 'North Plant Estate',         'ESTATE',     'OWN_ESTATE', 'Plant',
+     'Estate Office',     '+855 12 000 201', NULL::numeric,   NULL,        NULL::numeric,  NULL,  5.0::numeric),
+    ('2000', 'OG-101', 'Battambang Cane Co-op',      'OUT_GROWER', 'PURCHASED',  'West',
+     'Co-op Chair',       '+855 12 222 201', 15000::numeric,  'CN-2000-01', 30.5000::numeric, 'USD', 27.0::numeric)
+) AS g(company_code, code, name, gtype, supply, zone, contact, phone, tons, contract, price, currency, km)
+JOIN companies c ON c.company_code = g.company_code
+ON CONFLICT (company_id, grower_code) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- Cane fields
+-- ---------------------------------------------------------------------
+INSERT INTO cane_fields
+    (company_id, grower_id, variety_id, field_code, field_name, area_ha,
+     expected_yield_tph, crop_cycle, zone, is_irrigated)
+SELECT c.id, g.id, v.id, f.code, f.name, f.area, f.yield, f.cycle, f.zone, f.irrigated
+FROM (VALUES
+    ('1000', 'EST-01', 'K88-92',  'FLD-001', 'North Block A',      120.000::numeric, 78.000::numeric, 'PLANT',        'North', TRUE),
+    ('1000', 'EST-01', 'KPS01',   'FLD-002', 'North Block B',       95.500::numeric, 82.000::numeric, 'RATOON_1',     'North', TRUE),
+    ('1000', 'EST-02', 'K88-92',  'FLD-003', 'River Block A',      140.000::numeric, 71.000::numeric, 'RATOON_2',     'River', FALSE),
+    ('1000', 'OG-101', 'LK92-11', 'FLD-101', 'Thida Plot 1',        45.000::numeric, 64.000::numeric, 'PLANT',        'North', FALSE),
+    ('1000', 'OG-101', 'K88-92',  'FLD-102', 'Thida Plot 2',        38.250::numeric, 61.500::numeric, 'RATOON_1',     'North', FALSE),
+    ('1000', 'OG-102', 'VMC86',   'FLD-111', 'Dara East Field',     88.000::numeric, 69.000::numeric, 'PLANT',        'East',  TRUE),
+    ('1000', 'OG-102', 'KPS01',   'FLD-112', 'Dara South Field',    52.750::numeric, 74.000::numeric, 'RATOON_1',     'East',  FALSE),
+    ('1000', 'OG-103', 'F156',    'FLD-121', 'Mekong Group Plots',  61.000::numeric, 55.000::numeric, 'RATOON_3',     'River', FALSE),
+    ('1000', 'CT-201', 'VMC86',   'FLD-131', 'Southern Concession',110.000::numeric, 66.000::numeric, 'RATOON_1',     'South', FALSE),
+    ('2000', 'EST-01', 'K88-92',  'FLD-001', 'Plant Estate Block',  75.000::numeric, 70.000::numeric, 'PLANT',        'Plant', TRUE),
+    ('2000', 'OG-101', 'LK92-11', 'FLD-101', 'Co-op Consolidated',  96.000::numeric, 58.000::numeric, 'RATOON_2',     'West',  FALSE)
+) AS f(company_code, grower_code, variety_code, code, name, area, yield, cycle, zone, irrigated)
+JOIN companies     c ON c.company_code = f.company_code
+JOIN growers       g ON g.company_id = c.id AND g.grower_code = f.grower_code
+LEFT JOIN cane_varieties v ON v.variety_code = f.variety_code
+ON CONFLICT (company_id, field_code) DO NOTHING;
+
+-- ---------------------------------------------------------------------
+-- Cane yards — where a posted delivery lands. The yard is production
+-- storage: cane is weighed in and milled within the day, so its capacity
+-- is the tipping area rather than a stock limit.
+-- ---------------------------------------------------------------------
+INSERT INTO warehouses
+    (company_id, warehouse_code, warehouse_name, warehouse_type, capacity, capacity_uom_id, location)
+SELECT c.id, w.code, w.name, 'PRODUCTION_STORAGE', w.capacity, u.id, w.location
+FROM (VALUES
+    ('1000', 'CANEYARD', 'Cane Yard',       12000::numeric, 'TON', 'Mill Area'),
+    ('2000', 'CANEYARD', 'Cane Yard North',  6000::numeric, 'TON', 'Mill Area')
+) AS w(company_code, code, name, capacity, uom, location)
+JOIN companies c ON c.company_code = w.company_code
+JOIN uoms      u ON u.uom_code = w.uom
+ON CONFLICT (company_id, warehouse_code) DO NOTHING;
+
+INSERT INTO warehouse_materials (warehouse_id, material_id)
+SELECT w.id, m.id
+FROM warehouses w
+JOIN materials  m ON m.material_code = 'SUGARCANE'
+WHERE w.warehouse_code = 'CANEYARD'
+ON CONFLICT (warehouse_id, material_id) DO NOTHING;

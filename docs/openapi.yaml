@@ -932,6 +932,434 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/GenericList' }
 
+  /plans/matrix/all:
+    get:
+      tags: [Planning]
+      summary: The whole plan for a window — every product the version plans
+      description: |
+        Returns one grid per product, all over the same days and the same
+        production lines, so a planning screen can show the plant rather than
+        one product at a time.
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: versionId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: The set of grids
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/MatrixSet' }
+
+  # --- cane supply --------------------------------------------------------
+
+  /cane-varieties:
+    get:
+      tags: [Cane supply]
+      summary: List cane varieties
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Cane supply]
+      summary: Create a cane variety
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaneVariety' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericObject' }
+
+  /cane-varieties/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Cane supply]
+      summary: Read a cane variety
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    put:
+      tags: [Cane supply]
+      summary: Change a cane variety
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaneVariety' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Cane supply]
+      summary: Deactivate a cane variety
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: version, in: query, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: Deactivated }
+
+  /companies/{companyId}/growers:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+    get:
+      tags: [Cane supply]
+      summary: List growers
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Cane supply]
+      summary: Create a grower
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Grower' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericObject' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /companies/{companyId}/growers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+      - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Cane supply]
+      summary: Read a grower
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    put:
+      tags: [Cane supply]
+      summary: Change a grower
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Grower' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Cane supply]
+      summary: Deactivate a grower
+      parameters: [{ name: version, in: query, required: true, schema: { type: integer } }]
+      responses:
+        '204': { description: Deactivated }
+
+  /companies/{companyId}/cane-fields:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+    get:
+      tags: [Cane supply]
+      summary: List cane fields
+      parameters:
+        - { name: growerId, in: query, schema: { type: integer, format: int64 },
+            description: Narrows the list to one grower's plots. }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Cane supply]
+      summary: Create a cane field
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaneField' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericObject' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /companies/{companyId}/cane-fields/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+      - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Cane supply]
+      summary: Read a cane field
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    put:
+      tags: [Cane supply]
+      summary: Change a cane field
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaneField' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    delete:
+      tags: [Cane supply]
+      summary: Deactivate a cane field
+      parameters: [{ name: version, in: query, required: true, schema: { type: integer } }]
+      responses:
+        '204': { description: Deactivated }
+
+  /harvest-plans/matrix:
+    get:
+      tags: [Cane supply]
+      summary: Read the Date x Grower harvest grid
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: versionId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: The harvest grid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/HarvestMatrix' }
+    post:
+      tags: [Cane supply]
+      summary: Save the harvest grid
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/HarvestMatrixSaveRequest' }
+      responses:
+        '200':
+          description: The saved grid, read back
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/HarvestMatrix' }
+        '409':
+          description: The planning version is approved or locked (E-PLAN-007)
+
+  /harvest-plans:
+    get:
+      tags: [Cane supply]
+      summary: List harvest plan documents
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: versionId, in: query, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /harvest-plans/{headerId}/items:
+    parameters:
+      - { name: headerId, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Cane supply]
+      summary: Items of a harvest plan document
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /cane-deliveries:
+    get:
+      tags: [Cane supply]
+      summary: List weighbridge tickets
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: growerId, in: query, schema: { type: integer, format: int64 } }
+        - { name: caneFieldId, in: query, schema: { type: integer, format: int64 } }
+        - { name: varietyId, in: query, schema: { type: integer, format: int64 } }
+        - { name: status, in: query, schema: { type: string, enum: [DRAFT, POSTED, REVERSED] } }
+        - { name: dateFrom, in: query, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, schema: { type: string, format: date } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Cane supply]
+      summary: Record a weighbridge ticket
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaneDeliveryRequest' }
+      responses:
+        '201':
+          description: The ticket, with its derived net weight
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/CaneDelivery' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /cane-deliveries/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    get:
+      tags: [Cane supply]
+      summary: Read a weighbridge ticket
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    put:
+      tags: [Cane supply]
+      summary: Change a draft ticket
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaneDeliveryRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+        '409':
+          description: The ticket is posted and is corrected by reversal (E-ACT-004)
+
+  /cane-deliveries/{id}/post:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    post:
+      tags: [Cane supply]
+      summary: Post a ticket to stock
+      description: |
+        Writes one inventory movement for the net weight in the same
+        transaction as the status change, so every stock rule of the ledger
+        applies to cane unchanged.
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+        '409':
+          description: Only a DRAFT ticket can be posted (E-ACT-001)
+        '422':
+          description: The posting breaks a stock rule (E-INV-011, E-INV-012, E-INV-015)
+
+  /cane-deliveries/{id}/reverse:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    post:
+      tags: [Cane supply]
+      summary: Reverse a posted ticket
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { remark: { type: string } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+        '409':
+          description: Only a POSTED ticket can be reversed (E-ACT-002)
+
+  /reports/cane-plan-vs-actual:
+    get:
+      tags: [Reporting]
+      summary: Planned harvest against cane actually delivered
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: versionId, in: query, schema: { type: integer, format: int64 } }
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+        - name: groupBy
+          in: query
+          schema: { type: string, enum: [grower, variety, date, zone, supplyType], default: grower }
+        - name: supplyType
+          in: query
+          schema: { type: string, enum: [OWN_ESTATE, PURCHASED] }
+          description: Narrows the report to purchased or own-estate cane. Omit for both.
+      responses:
+        '200':
+          description: One row per group
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/CanePlanVsActualRow' }
+
+  # --- master data maintenance --------------------------------------------
+
+  /companies/{companyId}/tanks:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+    get:
+      tags: [Master data]
+      summary: Tanks of a company
+      description: |
+        The warehouse list narrowed to tanks. A tank is a warehouse of a
+        particular type, not a separate entity — same table, same rules.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /companies/{companyId}/condition-silos:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+    get:
+      tags: [Master data]
+      summary: Condition silos of a company
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /companies/{companyId}/warehouses/{id}/materials:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+      - { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+    put:
+      tags: [Master data]
+      summary: Restrict a tank or silo to the materials it may hold
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WarehouseMaterials' }
+      responses:
+        '200':
+          description: The stored restriction
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/WarehouseMaterials' }
+
   # --- data dictionary and browser ----------------------------------------
 
   /dd/tables:
@@ -1442,10 +1870,20 @@ components:
 
     MatrixSaveRequest:
       type: object
-      required: [seasonId, versionId, movementTypeId, materialId, uomId, dateFrom, dateTo, rows]
+      description: |
+        Saves the planning grid over a span of days. Either shape is accepted:
+        one product, named by `movementTypeId`/`materialId`/`uomId` with `rows`
+        at the top level; or several products at once, each an entry of
+        `series`. Both are written in one transaction — a rejected product
+        rolls the whole call back.
+      required: [seasonId, versionId, dateFrom, dateTo]
       properties:
         seasonId: { type: integer, format: int64 }
         versionId: { type: integer, format: int64 }
+        series:
+          type: array
+          description: Several products planned over the same days.
+          items: { $ref: '#/components/schemas/MatrixSeriesRequest' }
         movementTypeId: { type: integer, format: int64 }
         materialId: { type: integer, format: int64 }
         processId: { type: integer, format: int64, nullable: true }
@@ -1509,6 +1947,313 @@ components:
                     quantity: { $ref: '#/components/schemas/Quantity' }
                     uomId: { type: integer, format: int64 }
                     version: { type: integer }
+
+    MatrixSeriesRequest:
+      type: object
+      required: [movementTypeId, materialId, uomId, rows]
+      properties:
+        movementTypeId: { type: integer, format: int64 }
+        materialId: { type: integer, format: int64 }
+        processId: { type: integer, format: int64, nullable: true }
+        warehouseId: { type: integer, format: int64, nullable: true }
+        uomId: { type: integer, format: int64 }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [planDate, values]
+            properties:
+              planDate: { type: string, format: date }
+              values:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    productionLineId: { type: integer, format: int64, nullable: true }
+                    quantity:
+                      allOf: [{ $ref: '#/components/schemas/Quantity' }]
+                      nullable: true
+
+    MatrixSet:
+      type: object
+      description: |
+        Every product a version plans over one window — the whole plant across
+        several days, rather than one product at a time.
+      properties:
+        companyId: { type: integer, format: int64 }
+        versionId: { type: integer, format: int64 }
+        versionStatus: { type: string }
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              productionLineId: { type: integer, format: int64 }
+              lineCode: { type: string }
+              lineName: { type: string }
+        series:
+          type: array
+          items: { $ref: '#/components/schemas/Matrix' }
+
+    Grower:
+      type: object
+      description: |
+        A cane supplier of one company. `supplyType` separates purchased cane,
+        which carries a contract and a price per tonne, from the company's own
+        estate cane, which carries neither.
+      required: [growerCode, growerName, growerType, supplyType]
+      properties:
+        id: { type: integer, format: int64, readOnly: true }
+        companyId: { type: integer, format: int64, readOnly: true }
+        growerCode: { type: string, maxLength: 20 }
+        growerName: { type: string, maxLength: 200 }
+        growerType: { type: string, enum: [ESTATE, OUT_GROWER, CONTRACTOR] }
+        supplyType: { type: string, enum: [OWN_ESTATE, PURCHASED] }
+        zone: { type: string, nullable: true }
+        contactName: { type: string, nullable: true }
+        contactPhone: { type: string, nullable: true }
+        contractTons:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+          description: Null means no contract quantity agreed — not a zero commitment.
+        contractNo: { type: string, nullable: true }
+        pricePerTon:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+          description: Purchased cane only. Null means no price agreed yet.
+        currency: { type: string, minLength: 3, maxLength: 3, nullable: true }
+        transportKm:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+        version: { type: integer }
+
+    CaneField:
+      type: object
+      required: [growerId, fieldCode, fieldName, areaHa, cropCycle]
+      properties:
+        id: { type: integer, format: int64, readOnly: true }
+        companyId: { type: integer, format: int64, readOnly: true }
+        growerId: { type: integer, format: int64 }
+        varietyId: { type: integer, format: int64, nullable: true }
+        fieldCode: { type: string, maxLength: 20 }
+        fieldName: { type: string, maxLength: 200 }
+        areaHa: { $ref: '#/components/schemas/Quantity' }
+        expectedYieldTph:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+        estimatedTons:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+          readOnly: true
+          description: |
+            Area times expected yield. Absent — never zero — when the field has
+            no yield history yet.
+        cropCycle: { type: string, enum: [PLANT, RATOON_1, RATOON_2, RATOON_3, RATOON_4_PLUS] }
+        plantingDate: { type: string, format: date, nullable: true }
+        expectedHarvestFrom: { type: string, format: date, nullable: true }
+        expectedHarvestTo: { type: string, format: date, nullable: true }
+        zone: { type: string, nullable: true }
+        isIrrigated: { type: boolean }
+        version: { type: integer }
+
+    CaneVariety:
+      type: object
+      required: [varietyCode, varietyName]
+      properties:
+        id: { type: integer, format: int64, readOnly: true }
+        varietyCode: { type: string, maxLength: 30 }
+        varietyName: { type: string, maxLength: 200 }
+        maturityMonths: { type: integer, nullable: true }
+        typicalCcsPct:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+        description: { type: string, nullable: true }
+        version: { type: integer }
+
+    HarvestMatrixSaveRequest:
+      type: object
+      description: |
+        The Date x Grower harvest grid, saved the same way the production
+        matrix is: idempotent, and refused once the version is approved.
+      required: [versionId, dateFrom, dateTo, rows]
+      properties:
+        versionId: { type: integer, format: int64 }
+        uomId:
+          type: integer
+          format: int64
+          description: Defaults to the base unit of the company's cane material.
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
+        partialUpdate: { type: boolean }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [planDate, values]
+            properties:
+              planDate: { type: string, format: date }
+              values:
+                type: array
+                items:
+                  type: object
+                  required: [growerId]
+                  properties:
+                    growerId: { type: integer, format: int64 }
+                    caneFieldId: { type: integer, format: int64, nullable: true }
+                    varietyId: { type: integer, format: int64, nullable: true }
+                    plannedTons:
+                      allOf: [{ $ref: '#/components/schemas/Quantity' }]
+                      nullable: true
+                      description: Null leaves the stored value unchanged.
+                    plannedAreaHa:
+                      allOf: [{ $ref: '#/components/schemas/Quantity' }]
+                      nullable: true
+                    expectedCcsPct:
+                      allOf: [{ $ref: '#/components/schemas/Quantity' }]
+                      nullable: true
+                    remark: { type: string, nullable: true }
+
+    HarvestMatrix:
+      type: object
+      properties:
+        companyId: { type: integer, format: int64 }
+        versionId: { type: integer, format: int64 }
+        versionStatus: { type: string }
+        documentNo: { type: string }
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
+        growers:
+          type: array
+          description: The growers that form the columns.
+          items:
+            type: object
+            properties:
+              growerId: { type: integer, format: int64 }
+              growerCode: { type: string }
+              growerName: { type: string }
+              supplyType: { type: string, enum: [OWN_ESTATE, PURCHASED] }
+              zone: { type: string, nullable: true }
+        rows:
+          type: array
+          description: One entry per day of the range, including days with no value.
+          items:
+            type: object
+            properties:
+              planDate: { type: string, format: date }
+              values:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    growerId: { type: integer, format: int64 }
+                    caneFieldId: { type: integer, format: int64, nullable: true }
+                    varietyId: { type: integer, format: int64, nullable: true }
+                    plannedTons: { $ref: '#/components/schemas/Quantity' }
+                    uomId: { type: integer, format: int64 }
+                    version: { type: integer }
+
+    CaneDeliveryRequest:
+      type: object
+      description: |
+        A weighbridge ticket. `materialId`, `movementTypeId` and `uomId` may be
+        omitted — the server fills in the company's cane material, the cane
+        intake movement and the material's base unit. The contract price is
+        copied from the grower unless the request names one.
+      required: [deliveryDate, growerId, grossTons]
+      properties:
+        deliveryDate: { type: string, format: date }
+        growerId: { type: integer, format: int64 }
+        caneFieldId: { type: integer, format: int64, nullable: true }
+        varietyId: { type: integer, format: int64, nullable: true }
+        seasonId: { type: integer, format: int64, nullable: true }
+        materialId: { type: integer, format: int64 }
+        movementTypeId: { type: integer, format: int64 }
+        warehouseId:
+          type: integer
+          format: int64
+          nullable: true
+          description: The cane yard. Omit it to record the load without moving stock.
+        uomId: { type: integer, format: int64 }
+        ticketNo: { type: string, nullable: true }
+        vehicleNo: { type: string, nullable: true }
+        grossTons: { $ref: '#/components/schemas/Quantity' }
+        tareTons: { $ref: '#/components/schemas/Quantity' }
+        pricePerTon:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+        currency: { type: string, minLength: 3, maxLength: 3, nullable: true }
+        ccsPct:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+        trashPct:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+        isBurnt: { type: boolean }
+        remark: { type: string, nullable: true }
+        version: { type: integer }
+
+    CaneDelivery:
+      allOf:
+        - $ref: '#/components/schemas/CaneDeliveryRequest'
+        - type: object
+          properties:
+            id: { type: integer, format: int64 }
+            companyId: { type: integer, format: int64 }
+            documentNo: { type: string }
+            netTons:
+              allOf: [{ $ref: '#/components/schemas/Quantity' }]
+              readOnly: true
+              description: Gross minus tare, derived by the database.
+            value:
+              allOf: [{ $ref: '#/components/schemas/Quantity' }]
+              nullable: true
+              readOnly: true
+              description: |
+                Net tonnage times the agreed price. Absent when no price was
+                agreed — an unpriced load has an unknown value, never zero.
+            postingStatus: { type: string, enum: [DRAFT, POSTED, REVERSED] }
+            postedBy: { type: integer, format: int64, nullable: true }
+            postedAt: { type: string, format: date-time, nullable: true }
+            reversedBy: { type: integer, format: int64, nullable: true }
+            reversedAt: { type: string, format: date-time, nullable: true }
+
+    CanePlanVsActualRow:
+      type: object
+      properties:
+        groupKey: { type: string }
+        groupLabel: { type: string }
+        supplyType: { type: string, enum: [OWN_ESTATE, PURCHASED] }
+        growerId: { type: integer, format: int64, nullable: true }
+        growerCode: { type: string, nullable: true }
+        varietyId: { type: integer, format: int64, nullable: true }
+        varietyCode: { type: string, nullable: true }
+        planDate: { type: string, format: date, nullable: true }
+        plannedTons: { $ref: '#/components/schemas/Quantity' }
+        actualTons: { $ref: '#/components/schemas/Quantity' }
+        deliveries: { type: integer }
+        variancePct:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+          description: Null when there is no plan to vary from — rendered "n/a", never 0.
+        averageCcsPct:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+          description: Tonnage-weighted. Null when no delivery carried an analysis.
+        purchaseValue:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+          description: Null when any contributing delivery had no agreed price.
+        currency: { type: string, nullable: true }
+
+    WarehouseMaterials:
+      type: object
+      properties:
+        materialIds:
+          type: array
+          items: { type: integer, format: int64 }
+          description: Empty means the location accepts every material.
 
     ActualItemRequest:
       type: object

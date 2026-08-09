@@ -88,6 +88,13 @@ func (r *materialRepository) FindByCode(ctx context.Context, code string) (*mode
 	return findOne[model.Material](ctx, r.conn(ctx), "material_code = ?", code)
 }
 
+func (r *materialRepository) ListByGroup(ctx context.Context, group string) ([]model.Material, error) {
+	var rows []model.Material
+	err := r.conn(ctx).Where("material_group = ? AND is_active", group).
+		Order("material_code").Find(&rows).Error
+	return rows, translate(err)
+}
+
 func (r *materialRepository) ListForCompany(ctx context.Context, companyID int64,
 	opts interfaces.ListOptions) (interfaces.Page[model.CompanyMaterial], error) {
 

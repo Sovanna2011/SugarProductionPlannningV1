@@ -334,3 +334,28 @@ func (r *planRepository) MatrixCells(ctx context.Context, companyID, versionID,
 	err := q.Order("pi.plan_date, pi.production_line_id").Scan(&cells).Error
 	return cells, translate(err)
 }
+
+// MatrixSeries discovers which grids a version holds in the window, so the
+// planning screen can render every product it plans rather than asking the
+// user to pick one at a time.
+func (r *planRepository) MatrixSeries(ctx context.Context, companyID, versionID int64,
+	from, to time.Time) ([]interfaces.MatrixSeriesKey, error) {
+
+	var series []interfaces.MatrixSeriesKey
+	err := database.Conn(ctx, r.db).
+		Table("plan_items pi").
+		Select(`DISTINCT ph.movement_type_id, mt.movement_code, pi.material_id,
+		        m.material_code, m.material_name, pi.process_id, pr.process_code,
+		        pi.uom_id, u.uom_code`).
+		Joins("JOIN plan_headers ph ON ph.id = pi.plan_header_id").
+		Joins("JOIN movement_types mt ON mt.id = ph.movement_type_id").
+		Joins("JOIN materials m ON m.id = pi.material_id").
+		Joins("LEFT JOIN processes pr ON pr.id = pi.process_id").
+		Joins("JOIN uoms u ON u.id = pi.uom_id").
+		Where(`ph.company_id = ? AND ph.planning_version_id = ?
+		       AND pi.plan_date BETWEEN ? AND ? AND pi.is_active`,
+			companyID, versionID, from, to).
+		Order("m.material_code, pr.process_code").
+		Scan(&series).Error
+	return series, translate(err)
+}

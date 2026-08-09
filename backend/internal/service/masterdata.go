@@ -82,6 +82,12 @@ func (s *MasterDataService) UpdateCompany(ctx context.Context, company *model.Co
 
 // --- materials -----------------------------------------------------------
 
+// DeactivateCompany takes a company out of use. Nothing is deleted: its
+// documents stay readable, but it no longer appears in a user's company list.
+func (s *MasterDataService) DeactivateCompany(ctx context.Context, id int64, version int) error {
+	return s.companies.Deactivate(ctx, id, version)
+}
+
 func (s *MasterDataService) ListMaterials(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.Material], error) {
 	return s.materials.List(ctx, opts)
 }
@@ -225,6 +231,41 @@ func (s *MasterDataService) WarehouseAllowedMaterials(ctx context.Context, wareh
 	return s.warehouses.AllowedMaterials(ctx, warehouseID)
 }
 
+// ListWarehousesOfType is the maintenance view a tank or condition-silo screen
+// opens on. A tank and a silo are warehouses of a particular type rather than
+// separate entities, so this narrows the same list instead of querying a
+// different table.
+func (s *MasterDataService) ListWarehousesOfType(ctx context.Context, opts interfaces.ListOptions,
+	warehouseType string) (interfaces.Page[model.Warehouse], error) {
+
+	opts.Filters = append(opts.Filters, interfaces.Filter{
+		Field: "warehouse_type", Operator: interfaces.OpEq, Values: []any{warehouseType},
+	})
+	return s.warehouses.List(ctx, opts)
+}
+
+// SetWarehouseAllowedMaterials restricts a tank or silo to the materials it
+// may hold (OQ-4). An empty list means the location accepts anything.
+func (s *MasterDataService) SetWarehouseAllowedMaterials(ctx context.Context, companyID, warehouseID int64, materialIDs []int64) error {
+	warehouse, err := s.warehouses.FindByID(ctx, companyID, warehouseID)
+	if err != nil {
+		return err
+	}
+	for _, materialID := range materialIDs {
+		if _, err := s.materials.FindByID(ctx, materialID); err != nil {
+			return err
+		}
+	}
+	if err := s.warehouses.SetAllowedMaterials(ctx, warehouseID, materialIDs); err != nil {
+		return err
+	}
+	s.auditSvc.Record(ctx, audit.Event{
+		TableName: "warehouse_materials", RecordID: &warehouse.ID, CompanyID: &companyID,
+		Action: model.AuditUpdate, NewValues: map[string]any{"materialIds": materialIDs},
+	})
+	return nil
+}
+
 func (s *MasterDataService) DeactivateWarehouse(ctx context.Context, companyID, id int64, version int) error {
 	return s.warehouses.Deactivate(ctx, companyID, id, version)
 }
@@ -241,6 +282,10 @@ func (s *MasterDataService) CreateProductionLine(ctx context.Context, line *mode
 
 func (s *MasterDataService) UpdateProductionLine(ctx context.Context, line *model.ProductionLine) error {
 	return s.lines.Update(ctx, line.CompanyID, line)
+}
+
+func (s *MasterDataService) DeactivateProductionLine(ctx context.Context, companyID, id int64, version int) error {
+	return s.lines.Deactivate(ctx, companyID, id, version)
 }
 
 // --- seasons -------------------------------------------------------------
@@ -264,6 +309,10 @@ func (s *MasterDataService) CreateSeason(ctx context.Context, season *model.Seas
 		Action: model.AuditInsert, NewValues: season,
 	})
 	return nil
+}
+
+func (s *MasterDataService) DeactivateSeason(ctx context.Context, companyID, id int64, version int) error {
+	return s.seasons.Deactivate(ctx, companyID, id, version)
 }
 
 func (s *MasterDataService) UpdateSeason(ctx context.Context, season *model.Season) error {
@@ -339,6 +388,14 @@ func (s *MasterDataService) CreateMovementType(ctx context.Context, mt *model.Mo
 	return s.movements.Create(ctx, mt)
 }
 
+func (s *MasterDataService) UpdateMovementType(ctx context.Context, mt *model.MovementType) error {
+	if mt.Direction != model.DirectionIn && mt.Direction != model.DirectionOut {
+		return apperrors.ErrValidation.Msgf("direction must be IN or OUT").
+			WithDetails(apperrors.Detail{Field: "direction", Value: mt.Direction})
+	}
+	return s.movements.Update(ctx, mt)
+}
+
 func (s *MasterDataService) ListUOMs(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.UOM], error) {
 	return s.uoms.List(ctx, opts)
 }
@@ -347,12 +404,20 @@ func (s *MasterDataService) CreateUOM(ctx context.Context, uom *model.UOM) error
 	return s.uoms.Create(ctx, uom)
 }
 
+func (s *MasterDataService) UpdateUOM(ctx context.Context, uom *model.UOM) error {
+	return s.uoms.Update(ctx, uom)
+}
+
 func (s *MasterDataService) ListPackagingTypes(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.PackagingType], error) {
 	return s.packaging.List(ctx, opts)
 }
 
 func (s *MasterDataService) CreatePackagingType(ctx context.Context, pt *model.PackagingType) error {
 	return s.packaging.Create(ctx, pt)
+}
+
+func (s *MasterDataService) UpdatePackagingType(ctx context.Context, pt *model.PackagingType) error {
+	return s.packaging.Update(ctx, pt)
 }
 
 // --- shared validation used by the document services ---------------------

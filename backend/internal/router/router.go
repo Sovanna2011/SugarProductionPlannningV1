@@ -33,6 +33,7 @@ type Dependencies struct {
 	Planning  *controller.PlanningController
 	Actual    *controller.ActualController
 	Inventory *controller.InventoryController
+	Cane      *controller.CaneController
 	Reports   *controller.ReportController
 	Dict      *controller.DataDictionaryController
 	Admin     *controller.AdminController
@@ -64,9 +65,11 @@ func New(deps Dependencies) *gin.Engine {
 
 	registerCrossCompanyMaster(secured, deps)
 	registerCompanyMaster(secured, deps)
+	registerMaintenance(secured, deps)
 	registerPlanning(secured, deps)
 	registerActual(secured, deps)
 	registerInventory(secured, deps)
+	registerCane(secured, deps)
 	registerReports(secured, deps)
 	registerDataDictionary(secured, deps)
 	registerAdmin(secured, deps)
@@ -159,6 +162,26 @@ func registerCrossCompanyMaster(api *gin.RouterGroup, deps Dependencies) {
 	api.POST("/companies", anyCompany(deps, service.PermCompanyEdit, deps.Master.CreateCompany)...)
 }
 
+// registerMaintenance completes the maintenance surface the master data
+// screens need. Everything here deactivates rather than deletes (§B1).
+func registerMaintenance(api *gin.RouterGroup, deps Dependencies) {
+	api.PUT("/movement-types/:id", anyCompany(deps, service.PermMovementTypeEdit, deps.Master.UpdateMovementType)...)
+	api.PUT("/uoms/:id", anyCompany(deps, service.PermUOMEdit, deps.Master.UpdateUOM)...)
+	api.PUT("/packaging-types/:id", anyCompany(deps, service.PermPackagingEdit, deps.Master.UpdatePackagingType)...)
+
+	companies := api.Group("/companies/:companyId")
+	companies.DELETE("", company(deps, service.PermCompanyEdit, deps.Master.DeleteCompany)...)
+	// Tanks and condition silos are warehouses of a particular type, not
+	// separate entities: same table, same rules, same optimistic lock. These
+	// routes are the type-filtered view the maintenance screens open on, so a
+	// client never has to know how to spell the filter.
+	companies.GET("/tanks", company(deps, "MASTER.WAREHOUSE.VIEW", deps.Master.ListTanks)...)
+	companies.GET("/condition-silos", company(deps, "MASTER.WAREHOUSE.VIEW", deps.Master.ListConditionSilos)...)
+	companies.PUT("/warehouses/:id/materials", company(deps, service.PermWarehouseEdit, deps.Master.SetWarehouseMaterials)...)
+	companies.DELETE("/production-lines/:id", company(deps, service.PermLineEdit, deps.Master.DeleteProductionLine)...)
+	companies.DELETE("/seasons/:id", company(deps, service.PermSeasonEdit, deps.Master.DeleteSeason)...)
+}
+
 // Company-dependent master data carries the company in the path, which is what
 // CompanyAuth reads.
 func registerCompanyMaster(api *gin.RouterGroup, deps Dependencies) {
@@ -210,6 +233,9 @@ func registerPlanning(api *gin.RouterGroup, deps Dependencies) {
 	// The matrix routes are registered before the parameterised ones so that
 	// "matrix" is never mistaken for a header id.
 	plans.GET("/matrix", company(deps, service.PermPlanItemView, deps.Planning.GetMatrix)...)
+	// The set route returns every product the version plans over the window;
+	// the single route above still serves one product at a time.
+	plans.GET("/matrix/all", company(deps, service.PermPlanItemView, deps.Planning.GetMatrixSet)...)
 	plans.POST("/matrix", company(deps, service.PermPlanItemEdit, deps.Planning.SaveMatrix)...)
 	plans.GET("", company(deps, service.PermPlanItemView, deps.Planning.ListPlans)...)
 	plans.GET("/:headerId", company(deps, service.PermPlanItemView, deps.Planning.GetPlan)...)
@@ -242,6 +268,49 @@ func registerInventory(api *gin.RouterGroup, deps Dependencies) {
 	inventory.POST("/reconcile", company(deps, service.PermMovementCreate, deps.Inventory.Reconcile)...)
 }
 
+// --- cane supply ---------------------------------------------------------
+
+// Cane varieties are cross-company master data like materials; growers and
+// fields belong to one company and carry it in the path.
+func registerCane(api *gin.RouterGroup, deps Dependencies) {
+	varieties := api.Group("/cane-varieties")
+	varieties.GET("", anyCompany(deps, service.PermCaneVarietyView, deps.Cane.ListVarieties)...)
+	varieties.GET("/:id", anyCompany(deps, service.PermCaneVarietyView, deps.Cane.GetVariety)...)
+	varieties.POST("", anyCompany(deps, service.PermCaneVarietyEdit, deps.Cane.CreateVariety)...)
+	varieties.PUT("/:id", anyCompany(deps, service.PermCaneVarietyEdit, deps.Cane.UpdateVariety)...)
+	varieties.DELETE("/:id", anyCompany(deps, service.PermCaneVarietyEdit, deps.Cane.DeleteVariety)...)
+
+	companies := api.Group("/companies/:companyId")
+
+	companies.GET("/growers", company(deps, service.PermGrowerView, deps.Cane.ListGrowers)...)
+	companies.GET("/growers/:id", company(deps, service.PermGrowerView, deps.Cane.GetGrower)...)
+	companies.POST("/growers", company(deps, service.PermGrowerEdit, deps.Cane.CreateGrower)...)
+	companies.PUT("/growers/:id", company(deps, service.PermGrowerEdit, deps.Cane.UpdateGrower)...)
+	companies.DELETE("/growers/:id", company(deps, service.PermGrowerEdit, deps.Cane.DeleteGrower)...)
+
+	companies.GET("/cane-fields", company(deps, service.PermCaneFieldView, deps.Cane.ListFields)...)
+	companies.GET("/cane-fields/:id", company(deps, service.PermCaneFieldView, deps.Cane.GetField)...)
+	companies.POST("/cane-fields", company(deps, service.PermCaneFieldEdit, deps.Cane.CreateField)...)
+	companies.PUT("/cane-fields/:id", company(deps, service.PermCaneFieldEdit, deps.Cane.UpdateField)...)
+	companies.DELETE("/cane-fields/:id", company(deps, service.PermCaneFieldEdit, deps.Cane.DeleteField)...)
+
+	// The matrix routes come before the parameterised ones so that "matrix" is
+	// never mistaken for a document id.
+	harvest := api.Group("/harvest-plans")
+	harvest.GET("/matrix", company(deps, service.PermHarvestPlanView, deps.Cane.GetHarvestMatrix)...)
+	harvest.POST("/matrix", company(deps, service.PermHarvestPlanEdit, deps.Cane.SaveHarvestMatrix)...)
+	harvest.GET("", company(deps, service.PermHarvestPlanView, deps.Cane.ListHarvestPlans)...)
+	harvest.GET("/:headerId/items", company(deps, service.PermHarvestPlanView, deps.Cane.HarvestPlanItems)...)
+
+	deliveries := api.Group("/cane-deliveries")
+	deliveries.GET("", company(deps, service.PermDeliveryView, deps.Cane.ListDeliveries)...)
+	deliveries.POST("", company(deps, service.PermDeliveryCreate, deps.Cane.CreateDelivery)...)
+	deliveries.GET("/:id", company(deps, service.PermDeliveryView, deps.Cane.GetDelivery)...)
+	deliveries.PUT("/:id", company(deps, service.PermDeliveryEdit, deps.Cane.UpdateDelivery)...)
+	deliveries.POST("/:id/post", company(deps, service.PermDeliveryPost, deps.Cane.PostDelivery)...)
+	deliveries.POST("/:id/reverse", company(deps, service.PermDeliveryReverse, deps.Cane.ReverseDelivery)...)
+}
+
 // --- reporting (§E6) -----------------------------------------------------
 
 func registerReports(api *gin.RouterGroup, deps Dependencies) {
@@ -255,6 +324,7 @@ func registerReports(api *gin.RouterGroup, deps Dependencies) {
 	reports.GET("/production-summary", company(deps, service.PermReportProduction, deps.Reports.ProductionSummary)...)
 	reports.GET("/inventory-movement", company(deps, service.PermReportInventory, deps.Reports.InventoryMovements)...)
 	reports.GET("/capacity-utilisation", company(deps, service.PermReportCapacity, deps.Reports.CapacityUtilisation)...)
+	reports.GET("/cane-plan-vs-actual", company(deps, service.PermReportCane, deps.Cane.CanePlanVsActual)...)
 }
 
 // --- data dictionary & browser (§E7) -------------------------------------

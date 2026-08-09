@@ -79,6 +79,20 @@ func (ctl *MasterDataController) UpdateCompany(c *gin.Context) {
 	OK(c, mapper.CompanyToDTO(*company))
 }
 
+// DeleteCompany deactivates rather than deletes: a company's documents stay
+// readable, it simply stops being offered (§B1).
+func (ctl *MasterDataController) DeleteCompany(c *gin.Context) {
+	id, version, ok := idAndVersion(c, "companyId")
+	if !ok {
+		return
+	}
+	if err := ctl.master.DeactivateCompany(c.Request.Context(), id, version); err != nil {
+		Fail(c, err)
+		return
+	}
+	NoContent(c)
+}
+
 // --- materials -----------------------------------------------------------
 
 func (ctl *MasterDataController) ListMaterials(c *gin.Context) {
@@ -287,6 +301,58 @@ func (ctl *MasterDataController) DeleteWarehouse(c *gin.Context) {
 	NoContent(c)
 }
 
+// ListTanks and ListConditionSilos are the maintenance views of the two
+// storage kinds that carry their own rules — a tank holds one liquid, a
+// condition silo holds only conditioned sugar. Both are warehouses: same
+// table, same optimistic lock, narrowed by type.
+func (ctl *MasterDataController) ListTanks(c *gin.Context) {
+	ctl.listWarehousesOfType(c, model.WarehouseTypeTank)
+}
+
+func (ctl *MasterDataController) ListConditionSilos(c *gin.Context) {
+	ctl.listWarehousesOfType(c, model.WarehouseTypeSilo)
+}
+
+func (ctl *MasterDataController) listWarehousesOfType(c *gin.Context, warehouseType string) {
+	companyID := CompanyID(c)
+	opts, ok := ListOptions(c, &companyID)
+	if !ok {
+		return
+	}
+	page, err := ctl.master.ListWarehousesOfType(c.Request.Context(), opts, warehouseType)
+	if err != nil {
+		Fail(c, err)
+		return
+	}
+	Paged(c, mapper.Slice(page.Rows, func(w model.Warehouse) dto.WarehouseResponse {
+		return mapper.WarehouseToDTO(w, nil)
+	}), opts, page.Total)
+}
+
+// SetWarehouseMaterials restricts a tank or silo to what it may hold. An empty
+// list means the location accepts every material (OQ-4).
+func (ctl *MasterDataController) SetWarehouseMaterials(c *gin.Context) {
+	id, ok := PathID(c, "id")
+	if !ok {
+		return
+	}
+	req, ok := Bind[dto.WarehouseMaterialsRequest](c)
+	if !ok {
+		return
+	}
+	err := ctl.master.SetWarehouseAllowedMaterials(c.Request.Context(), CompanyID(c), id, req.MaterialIDs)
+	if err != nil {
+		Fail(c, err)
+		return
+	}
+	stored, err := ctl.master.WarehouseAllowedMaterials(c.Request.Context(), id)
+	if err != nil {
+		Fail(c, err)
+		return
+	}
+	OK(c, dto.WarehouseMaterialsRequest{MaterialIDs: stored})
+}
+
 // --- production lines ----------------------------------------------------
 
 func (ctl *MasterDataController) ListProductionLines(c *gin.Context) {
@@ -334,6 +400,18 @@ func (ctl *MasterDataController) UpdateProductionLine(c *gin.Context) {
 	OK(c, mapper.ProductionLineToDTO(*line))
 }
 
+func (ctl *MasterDataController) DeleteProductionLine(c *gin.Context) {
+	id, version, ok := idAndVersion(c, "id")
+	if !ok {
+		return
+	}
+	if err := ctl.master.DeactivateProductionLine(c.Request.Context(), CompanyID(c), id, version); err != nil {
+		Fail(c, err)
+		return
+	}
+	NoContent(c)
+}
+
 // --- seasons -------------------------------------------------------------
 
 func (ctl *MasterDataController) ListSeasons(c *gin.Context) {
@@ -379,6 +457,18 @@ func (ctl *MasterDataController) UpdateSeason(c *gin.Context) {
 		return
 	}
 	OK(c, mapper.SeasonToDTO(*season))
+}
+
+func (ctl *MasterDataController) DeleteSeason(c *gin.Context) {
+	id, version, ok := idAndVersion(c, "id")
+	if !ok {
+		return
+	}
+	if err := ctl.master.DeactivateSeason(c.Request.Context(), CompanyID(c), id, version); err != nil {
+		Fail(c, err)
+		return
+	}
+	NoContent(c)
 }
 
 // --- processes -----------------------------------------------------------
@@ -484,6 +574,24 @@ func (ctl *MasterDataController) CreateMovementType(c *gin.Context) {
 	Created(c, mapper.MovementTypeToDTO(*mt))
 }
 
+func (ctl *MasterDataController) UpdateMovementType(c *gin.Context) {
+	id, ok := PathID(c, "id")
+	if !ok {
+		return
+	}
+	req, ok := Bind[dto.MovementTypeRequest](c)
+	if !ok {
+		return
+	}
+	mt := mapper.MovementTypeFromDTO(req, &model.MovementType{})
+	mt.ID = id
+	if err := ctl.master.UpdateMovementType(c.Request.Context(), mt); err != nil {
+		Fail(c, err)
+		return
+	}
+	OK(c, mapper.MovementTypeToDTO(*mt))
+}
+
 func (ctl *MasterDataController) ListUOMs(c *gin.Context) {
 	opts, ok := ListOptions(c, nil)
 	if !ok {
@@ -510,6 +618,24 @@ func (ctl *MasterDataController) CreateUOM(c *gin.Context) {
 	Created(c, mapper.UOMToDTO(*uom))
 }
 
+func (ctl *MasterDataController) UpdateUOM(c *gin.Context) {
+	id, ok := PathID(c, "id")
+	if !ok {
+		return
+	}
+	req, ok := Bind[dto.UOMRequest](c)
+	if !ok {
+		return
+	}
+	uom := mapper.UOMFromDTO(req, &model.UOM{})
+	uom.ID = id
+	if err := ctl.master.UpdateUOM(c.Request.Context(), uom); err != nil {
+		Fail(c, err)
+		return
+	}
+	OK(c, mapper.UOMToDTO(*uom))
+}
+
 func (ctl *MasterDataController) ListPackagingTypes(c *gin.Context) {
 	opts, ok := ListOptions(c, nil)
 	if !ok {
@@ -534,4 +660,22 @@ func (ctl *MasterDataController) CreatePackagingType(c *gin.Context) {
 		return
 	}
 	Created(c, mapper.PackagingTypeToDTO(*pt))
+}
+
+func (ctl *MasterDataController) UpdatePackagingType(c *gin.Context) {
+	id, ok := PathID(c, "id")
+	if !ok {
+		return
+	}
+	req, ok := Bind[dto.PackagingTypeRequest](c)
+	if !ok {
+		return
+	}
+	pt := mapper.PackagingTypeFromDTO(req, &model.PackagingType{})
+	pt.ID = id
+	if err := ctl.master.UpdatePackagingType(c.Request.Context(), pt); err != nil {
+		Fail(c, err)
+		return
+	}
+	OK(c, mapper.PackagingTypeToDTO(*pt))
 }

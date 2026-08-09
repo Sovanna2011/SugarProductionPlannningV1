@@ -57,7 +57,7 @@ schema: ## Regenerate schema.sql from the migrations
 	@printf -- '-- Concatenation of backend/migrations/*.up.sql, produced by `make schema`.\n' >> $(SCHEMA)
 	@printf -- '-- The migrations are the source of truth; this file is the readable\n' >> $(SCHEMA)
 	@printf -- '-- companion the specification refers to.\n\n' >> $(SCHEMA)
-	@for file in $(BACKEND)/migrations/*.up.sql; do \
+	@for file in $(BACKEND)/migrations/*.up.sql $(BACKEND)/migrations/demo/*.up.sql; do \
 		printf -- '\n-- ===== %s =====\n' "$$(basename $$file)" >> $(SCHEMA); \
 		cat "$$file" >> $(SCHEMA); \
 	done

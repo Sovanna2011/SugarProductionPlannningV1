@@ -64,6 +64,13 @@ func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, err
 	uomRepo := postgres.NewUOMRepository(db)
 	packagingRepo := postgres.NewPackagingTypeRepository(db)
 
+	varietyRepo := postgres.NewCaneVarietyRepository(db)
+	growerRepo := postgres.NewGrowerRepository(db)
+	caneFieldRepo := postgres.NewCaneFieldRepository(db)
+	harvestRepo := postgres.NewHarvestPlanRepository(db)
+	deliveryRepo := postgres.NewCaneDeliveryRepository(db)
+	caneReportRepo := postgres.NewCaneReportRepository(db)
+
 	versionRepo := postgres.NewPlanningVersionRepository(db)
 	planRepo := postgres.NewPlanRepository(db)
 	actualRepo := postgres.NewActualRepository(db)
@@ -97,6 +104,9 @@ func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, err
 		authz, refs, auditSvc, uow, cfg.Business)
 	actualSvc := service.NewActualService(actualRepo, inventorySvc, numbering, refs,
 		seasonRepo, auditSvc, uow)
+	caneSvc := service.NewCaneService(varietyRepo, growerRepo, caneFieldRepo, harvestRepo,
+		deliveryRepo, caneReportRepo, versionRepo, materialRepo, movementRepo, seasonRepo,
+		inventorySvc, numbering, authz, refs, auditSvc, uow)
 	reportSvc := service.NewReportService(reportRepo, versionRepo)
 	ddSvc := service.NewDataDictionaryService(ddRepo, browserRepo, auditSvc, cfg.Business)
 
@@ -131,6 +141,7 @@ func New(ctx context.Context, cfg *config.Config, log zerolog.Logger) (*App, err
 		Planning:  controller.NewPlanningController(planningSvc),
 		Actual:    controller.NewActualController(actualSvc),
 		Inventory: controller.NewInventoryController(inventorySvc),
+		Cane:      controller.NewCaneController(caneSvc),
 		Reports:   controller.NewReportController(reportSvc, authz, cfg.Business),
 		Dict:      controller.NewDataDictionaryController(ddSvc, authz),
 		Admin:     controller.NewAdminController(userSvc, authz, numbering, auditSvc),

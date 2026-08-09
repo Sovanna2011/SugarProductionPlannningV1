@@ -228,18 +228,56 @@ func (ctl *PlanningController) GetMatrix(c *gin.Context) {
 	OK(c, mapper.MatrixToDTO(matrix))
 }
 
-// SaveMatrix is the matrix-shaped bulk save. It is idempotent: replaying the
-// same payload produces the same grid rather than duplicate rows.
+// GetMatrixSet returns every product the version plans in the window, each
+// with its own grid — the whole plan over several days rather than one product
+// at a time.
+func (ctl *PlanningController) GetMatrixSet(c *gin.Context) {
+	versionID, ok := QueryID(c, "versionId")
+	if !ok {
+		return
+	}
+	if versionID == nil {
+		Fail(c, missingMatrixSelection())
+		return
+	}
+	from, ok := RequiredQueryDate(c, "dateFrom")
+	if !ok {
+		return
+	}
+	to, ok := RequiredQueryDate(c, "dateTo")
+	if !ok {
+		return
+	}
+
+	companyID := CompanyID(c)
+	series, err := ctl.planning.GetMatrixSet(c.Request.Context(), companyID, *versionID, from, to)
+	if err != nil {
+		Fail(c, err)
+		return
+	}
+	OK(c, mapper.MatrixSetToDTO(companyID, *versionID, from, to, series))
+}
+
+// SaveMatrix is the matrix-shaped bulk save. It takes one product or several
+// in the same payload, and is idempotent either way: replaying it produces the
+// same grid rather than duplicate rows.
 func (ctl *PlanningController) SaveMatrix(c *gin.Context) {
 	req, ok := Bind[dto.MatrixSaveRequest](c)
 	if !ok {
 		return
 	}
-	matrix, err := ctl.planning.SaveMatrix(c.Request.Context(),
-		mapper.MatrixRequestFromDTO(req, CompanyID(c)), UserID(c))
+	set := mapper.MatrixSetRequestFromDTO(req, CompanyID(c))
+	saved, err := ctl.planning.SaveMatrixSet(c.Request.Context(), set, UserID(c))
 	if err != nil {
 		Fail(c, err)
 		return
 	}
-	OK(c, mapper.MatrixToDTO(matrix))
+
+	// A single-product save answers with that product's grid, so a client
+	// written against the original contract sees exactly what it did before.
+	if len(req.Series) == 0 && len(saved) == 1 {
+		OK(c, mapper.MatrixToDTO(&saved[0]))
+		return
+	}
+	OK(c, mapper.MatrixSetToDTO(set.CompanyID, set.VersionID, set.DateFrom, set.DateTo, saved))
 }

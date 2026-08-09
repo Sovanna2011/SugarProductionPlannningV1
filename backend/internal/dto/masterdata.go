@@ -130,6 +130,13 @@ type WarehouseRequest struct {
 	Version            int     `json:"version"`
 }
 
+// WarehouseMaterialsRequest maintains the material restriction of a tank or
+// silo on its own, without rewriting the location itself. An empty list means
+// the location accepts every material.
+type WarehouseMaterialsRequest struct {
+	MaterialIDs []int64 `json:"materialIds"`
+}
+
 type WarehouseResponse struct {
 	ID                 int64     `json:"id"`
 	CompanyID          int64     `json:"companyId"`

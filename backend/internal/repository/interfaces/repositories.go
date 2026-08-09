@@ -78,6 +78,9 @@ type RefreshTokenRepository interface {
 type MaterialRepository interface {
 	CrossCompanyRepository[model.Material]
 	FindByCode(ctx context.Context, code string) (*model.Material, error)
+	// ListByGroup resolves a material family — the cane module uses it so that
+	// its default material is master data rather than a code in Go.
+	ListByGroup(ctx context.Context, group string) ([]model.Material, error)
 	// ListForCompany returns materials joined with their company relevance
 	// flags, which is what the planning and actual value helps need.
 	ListForCompany(ctx context.Context, companyID int64, opts ListOptions) (Page[model.CompanyMaterial], error)
@@ -162,6 +165,25 @@ type PlanRepository interface {
 	// MatrixCells reads the Date × Line grid of §28 in one query.
 	MatrixCells(ctx context.Context, companyID, versionID, movementTypeID, materialID int64,
 		processID *int64, from, to time.Time) ([]MatrixCell, error)
+	// MatrixSeries lists the (movement type, material, process) combinations a
+	// version actually plans in a window. It is what lets one screen show the
+	// whole plan — several products over several days — instead of one product
+	// at a time.
+	MatrixSeries(ctx context.Context, companyID, versionID int64, from, to time.Time) ([]MatrixSeriesKey, error)
+}
+
+// MatrixSeriesKey identifies one grid within a version, with the labels a
+// client needs to render its heading.
+type MatrixSeriesKey struct {
+	MovementTypeID   int64
+	MovementCode     string
+	MaterialID       int64
+	MaterialCode     string
+	MaterialName     string
+	ProcessID        *int64
+	ProcessCode      *string
+	UOMID            int64
+	UOMCode          string
 }
 
 // MatrixCell is one editable cell of the planning matrix.

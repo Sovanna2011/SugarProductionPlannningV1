@@ -108,18 +108,38 @@ type MatrixRowRequest struct {
 	Values   []MatrixValueRequest `json:"values" binding:"required"`
 }
 
+// MatrixSaveRequest saves the planning grid. It accepts either shape:
+//
+//   - one product, with movementTypeId/materialId/uomId and rows at the top
+//     level;
+//   - several products at once, each in its own entry of series.
+//
+// Both cover the same span of days and are written in one transaction.
 type MatrixSaveRequest struct {
-	SeasonID       int64              `json:"seasonId" binding:"required"`
-	VersionID      int64              `json:"versionId" binding:"required"`
+	SeasonID  int64 `json:"seasonId" binding:"required"`
+	VersionID int64 `json:"versionId" binding:"required"`
+	// The single-product fields. Leave them out when using series.
+	MovementTypeID int64              `json:"movementTypeId"`
+	MaterialID     int64              `json:"materialId"`
+	ProcessID      *int64             `json:"processId"`
+	WarehouseID    *int64             `json:"warehouseId"`
+	UOMID          int64              `json:"uomId"`
+	Rows           []MatrixRowRequest `json:"rows"`
+	// Series plans several products over the same days in one call.
+	Series        []MatrixSeriesRequest `json:"series"`
+	DateFrom      Date                  `json:"dateFrom" binding:"required"`
+	DateTo        Date                  `json:"dateTo" binding:"required"`
+	PartialUpdate bool                  `json:"partialUpdate"`
+}
+
+// MatrixSeriesRequest is one product's grid inside a multi-product save.
+type MatrixSeriesRequest struct {
 	MovementTypeID int64              `json:"movementTypeId" binding:"required"`
 	MaterialID     int64              `json:"materialId" binding:"required"`
 	ProcessID      *int64             `json:"processId"`
 	WarehouseID    *int64             `json:"warehouseId"`
 	UOMID          int64              `json:"uomId" binding:"required"`
-	DateFrom       Date               `json:"dateFrom" binding:"required"`
-	DateTo         Date               `json:"dateTo" binding:"required"`
 	Rows           []MatrixRowRequest `json:"rows" binding:"required"`
-	PartialUpdate  bool               `json:"partialUpdate"`
 }
 
 type MatrixLineResponse struct {
@@ -146,11 +166,28 @@ type MatrixResponse struct {
 	VersionStatus  string               `json:"versionStatus"`
 	MovementTypeID int64                `json:"movementTypeId"`
 	MaterialID     int64                `json:"materialId"`
+	MaterialCode   string               `json:"materialCode,omitempty"`
+	MaterialName   string               `json:"materialName,omitempty"`
 	ProcessID      *int64               `json:"processId,omitempty"`
+	ProcessCode    *string              `json:"processCode,omitempty"`
+	UOMID          int64                `json:"uomId,omitempty"`
+	UOMCode        string               `json:"uomCode,omitempty"`
 	DateFrom       Date                 `json:"dateFrom"`
 	DateTo         Date                 `json:"dateTo"`
 	Lines          []MatrixLineResponse `json:"lines"`
 	Rows           []MatrixRowResponse  `json:"rows"`
+}
+
+// MatrixSetResponse is the whole plan for a window: every product the version
+// plans, each with its own grid, sharing one set of dates and lines.
+type MatrixSetResponse struct {
+	CompanyID     int64                `json:"companyId"`
+	VersionID     int64                `json:"versionId"`
+	VersionStatus string               `json:"versionStatus"`
+	DateFrom      Date                 `json:"dateFrom"`
+	DateTo        Date                 `json:"dateTo"`
+	Lines         []MatrixLineResponse `json:"lines"`
+	Series        []MatrixResponse     `json:"series"`
 }
 
 // --- actual documents ----------------------------------------------------
