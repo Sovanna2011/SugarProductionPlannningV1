@@ -11,6 +11,7 @@ import (
 type caneFixtures struct {
 	fixtures
 	estate, outGrower int64
+	contractor        int64
 	estateField       int64
 	outGrowerField    int64
 	caneYard          int64
@@ -25,6 +26,9 @@ func loadCane(t *testing.T) caneFixtures {
 		fmt.Sprintf("/api/v1/companies/%d/growers?size=100", f.company1), f.admin, nil).list(t)
 	f.estate = id(findBy(growers, "growerCode", "EST-01")["id"])
 	f.outGrower = id(findBy(growers, "growerCode", "OG-101")["id"])
+	// A grower no other test delivers for, so a "planned but nothing arrived"
+	// row stays exactly that however the suite is ordered.
+	f.contractor = id(findBy(growers, "growerCode", "CT-201")["id"])
 
 	fields := call(t, http.MethodGet,
 		fmt.Sprintf("/api/v1/companies/%d/cane-fields?size=100", f.company1), f.admin, nil).list(t)
@@ -437,10 +441,10 @@ func TestCanePlanVsActualKeepsTheNullRule(t *testing.T) {
 	f := loadCane(t)
 	version := createVersion(t, f.fixtures, "Cane report")
 
-	// Plan the estate only, then deliver from the out-grower only: one row has
-	// a plan and no actual, the other an actual and no plan.
+	// Plan the contractor only, then deliver from the out-grower only: one row
+	// has a plan and no actual, the other an actual and no plan.
 	saveHarvest(t, f, version, []any{map[string]any{"planDate": today(), "values": []any{
-		map[string]any{"growerId": f.estate, "plannedTons": "1000"},
+		map[string]any{"growerId": f.contractor, "plannedTons": "1000"},
 	}}}, false)
 
 	delivery := createDelivery(t, f, f.outGrower, "60", "10")
@@ -456,7 +460,7 @@ func TestCanePlanVsActualKeepsTheNullRule(t *testing.T) {
 	for _, row := range rows {
 		entry := row.(map[string]any)
 		switch entry["growerCode"] {
-		case "EST-01":
+		case "CT-201":
 			planned = entry
 		case "OG-101":
 			delivered = entry
@@ -467,7 +471,7 @@ func TestCanePlanVsActualKeepsTheNullRule(t *testing.T) {
 		t.Fatalf("the planned grower must appear even with no delivery: %v", rows)
 	}
 	if planned["plannedTons"] != "1000" {
-		t.Fatalf("expected the estate's 1000 t plan, got %v", planned["plannedTons"])
+		t.Fatalf("expected the contractor's 1000 t plan, got %v", planned["plannedTons"])
 	}
 	if planned["variancePct"] != "-100" {
 		t.Errorf("a plan with no delivery is -100 %%, got %v", planned["variancePct"])

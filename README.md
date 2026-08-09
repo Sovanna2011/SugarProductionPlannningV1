@@ -264,7 +264,7 @@ make unit     # only the tests that need no database
 make cover    # statement coverage per package
 ```
 
-108 tests. The unit tests pin the pure rules — the variance formula, the status
+117 tests. The unit tests pin the pure rules — the variance formula, the status
 machine, argon2id handling. The integration tests boot the real dependency
 graph from `internal/app` against a real PostgreSQL, so they exercise the
 production wiring including the middleware chain, the triggers and the
@@ -287,7 +287,7 @@ The suite skips itself when no database is reachable, so `go test ./...` still
 works without one. Point it elsewhere with `TEST_DB_HOST` and friends; it
 creates and drops its own database per run.
 
-Current statement coverage: **77.6 % on the service layer, 77.7 % overall**.
+Current statement coverage: **77.3 % on the service layer, 77.3 % overall**.
 The specification asks for ≥ 80 % on the service layer, so this is short of
 target. What remains uncovered is almost entirely database-error branches,
 which need fault injection rather than more scenarios.
