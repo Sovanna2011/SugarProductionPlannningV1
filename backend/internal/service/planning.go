@@ -453,8 +453,8 @@ func (s *PlanningService) SaveMatrixSet(ctx context.Context, req MatrixSetReques
 			Action: model.AuditUpdate,
 			NewValues: map[string]any{
 				"versionId": req.VersionID, "series": len(req.Series),
-				"dateFrom": req.DateFrom.Format("2006-01-02"),
-				"dateTo":   req.DateTo.Format("2006-01-02"),
+				"dateFrom":      req.DateFrom.Format("2006-01-02"),
+				"dateTo":        req.DateTo.Format("2006-01-02"),
 				"partialUpdate": req.PartialUpdate,
 			},
 		})

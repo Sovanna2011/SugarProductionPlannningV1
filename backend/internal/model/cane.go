@@ -147,21 +147,21 @@ func (HarvestPlanItem) TableName() string { return "harvest_plan_items" }
 // cane needs no special case anywhere in the stock ledger.
 type CaneDelivery struct {
 	Base
-	CompanyID      int64            `gorm:"column:company_id;not null"`
-	SeasonID       *int64           `gorm:"column:season_id"`
-	DocumentNo     string           `gorm:"column:document_no;size:40;not null"`
-	DeliveryDate   time.Time        `gorm:"column:delivery_date;type:date;not null"`
-	GrowerID       int64            `gorm:"column:grower_id;not null"`
-	CaneFieldID    *int64           `gorm:"column:cane_field_id"`
-	VarietyID      *int64           `gorm:"column:variety_id"`
-	MaterialID     int64            `gorm:"column:material_id;not null"`
-	MovementTypeID int64            `gorm:"column:movement_type_id;not null"`
-	WarehouseID    *int64           `gorm:"column:warehouse_id"`
-	UOMID          int64            `gorm:"column:uom_id;not null"`
-	TicketNo       *string          `gorm:"column:ticket_no;size:40"`
-	VehicleNo      *string          `gorm:"column:vehicle_no;size:30"`
-	GrossTons      decimal.Decimal  `gorm:"column:gross_tons;type:numeric(18,3);not null"`
-	TareTons       decimal.Decimal  `gorm:"column:tare_tons;type:numeric(18,3);not null"`
+	CompanyID      int64           `gorm:"column:company_id;not null"`
+	SeasonID       *int64          `gorm:"column:season_id"`
+	DocumentNo     string          `gorm:"column:document_no;size:40;not null"`
+	DeliveryDate   time.Time       `gorm:"column:delivery_date;type:date;not null"`
+	GrowerID       int64           `gorm:"column:grower_id;not null"`
+	CaneFieldID    *int64          `gorm:"column:cane_field_id"`
+	VarietyID      *int64          `gorm:"column:variety_id"`
+	MaterialID     int64           `gorm:"column:material_id;not null"`
+	MovementTypeID int64           `gorm:"column:movement_type_id;not null"`
+	WarehouseID    *int64          `gorm:"column:warehouse_id"`
+	UOMID          int64           `gorm:"column:uom_id;not null"`
+	TicketNo       *string         `gorm:"column:ticket_no;size:40"`
+	VehicleNo      *string         `gorm:"column:vehicle_no;size:30"`
+	GrossTons      decimal.Decimal `gorm:"column:gross_tons;type:numeric(18,3);not null"`
+	TareTons       decimal.Decimal `gorm:"column:tare_tons;type:numeric(18,3);not null"`
 	// NetTons is a generated column: the database derives it from gross and
 	// tare, so no code path can leave the three disagreeing.
 	NetTons        decimal.Decimal  `gorm:"column:net_tons;type:numeric(18,3);->"`

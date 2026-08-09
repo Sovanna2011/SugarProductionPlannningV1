@@ -101,14 +101,14 @@ type CanePlanVsActualQuery struct {
 }
 
 type CanePlanVsActualRow struct {
-	GroupKey   string
-	GroupLabel string
-	SupplyType string
-	GrowerID   *int64
-	GrowerCode *string
-	VarietyID  *int64
+	GroupKey    string
+	GroupLabel  string
+	SupplyType  string
+	GrowerID    *int64
+	GrowerCode  *string
+	VarietyID   *int64
 	VarietyCode *string
-	PlanDate   *time.Time
+	PlanDate    *time.Time
 	PlannedTons decimal.Decimal
 	ActualTons  decimal.Decimal
 	Deliveries  int64

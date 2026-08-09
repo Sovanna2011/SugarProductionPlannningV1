@@ -80,14 +80,14 @@ type CaneFieldRequest struct {
 }
 
 type CaneFieldResponse struct {
-	ID                  int64     `json:"id"`
-	CompanyID           int64     `json:"companyId"`
-	GrowerID            int64     `json:"growerId"`
-	VarietyID           *int64    `json:"varietyId,omitempty"`
-	FieldCode           string    `json:"fieldCode"`
-	FieldName           string    `json:"fieldName"`
-	AreaHa              Quantity  `json:"areaHa"`
-	ExpectedYieldTPH    *Quantity `json:"expectedYieldTph,omitempty"`
+	ID               int64     `json:"id"`
+	CompanyID        int64     `json:"companyId"`
+	GrowerID         int64     `json:"growerId"`
+	VarietyID        *int64    `json:"varietyId,omitempty"`
+	FieldCode        string    `json:"fieldCode"`
+	FieldName        string    `json:"fieldName"`
+	AreaHa           Quantity  `json:"areaHa"`
+	ExpectedYieldTPH *Quantity `json:"expectedYieldTph,omitempty"`
 	// EstimatedTons is area × expected yield. It is absent, not zero, when the
 	// field has no yield maintained yet.
 	EstimatedTons       *Quantity `json:"estimatedTons,omitempty"`
@@ -129,10 +129,10 @@ type HarvestMatrixSaveRequest struct {
 }
 
 type HarvestGrowerResponse struct {
-	GrowerID   int64  `json:"growerId"`
-	GrowerCode string `json:"growerCode"`
-	GrowerName string `json:"growerName"`
-	SupplyType string `json:"supplyType"`
+	GrowerID   int64   `json:"growerId"`
+	GrowerCode string  `json:"growerCode"`
+	GrowerName string  `json:"growerName"`
+	SupplyType string  `json:"supplyType"`
 	Zone       *string `json:"zone,omitempty"`
 }
 
@@ -255,17 +255,17 @@ type CaneDeliveryResponse struct {
 // --- cane plan vs actual -------------------------------------------------
 
 type CanePlanVsActualRow struct {
-	GroupKey    string    `json:"groupKey"`
-	GroupLabel  string    `json:"groupLabel"`
-	SupplyType  string    `json:"supplyType,omitempty"`
-	GrowerID    *int64    `json:"growerId,omitempty"`
-	GrowerCode  *string   `json:"growerCode,omitempty"`
-	VarietyID   *int64    `json:"varietyId,omitempty"`
-	VarietyCode *string   `json:"varietyCode,omitempty"`
-	PlanDate    *Date     `json:"planDate,omitempty"`
-	PlannedTons Quantity  `json:"plannedTons"`
-	ActualTons  Quantity  `json:"actualTons"`
-	Deliveries  int64     `json:"deliveries"`
+	GroupKey    string   `json:"groupKey"`
+	GroupLabel  string   `json:"groupLabel"`
+	SupplyType  string   `json:"supplyType,omitempty"`
+	GrowerID    *int64   `json:"growerId,omitempty"`
+	GrowerCode  *string  `json:"growerCode,omitempty"`
+	VarietyID   *int64   `json:"varietyId,omitempty"`
+	VarietyCode *string  `json:"varietyCode,omitempty"`
+	PlanDate    *Date    `json:"planDate,omitempty"`
+	PlannedTons Quantity `json:"plannedTons"`
+	ActualTons  Quantity `json:"actualTons"`
+	Deliveries  int64    `json:"deliveries"`
 	// VariancePct is null when there is no plan to vary from — rendered as
 	// "n/a", never as 0 or 100 (§F6).
 	VariancePct   *Quantity `json:"variancePct"`

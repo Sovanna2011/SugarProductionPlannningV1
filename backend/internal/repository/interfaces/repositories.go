@@ -175,15 +175,15 @@ type PlanRepository interface {
 // MatrixSeriesKey identifies one grid within a version, with the labels a
 // client needs to render its heading.
 type MatrixSeriesKey struct {
-	MovementTypeID   int64
-	MovementCode     string
-	MaterialID       int64
-	MaterialCode     string
-	MaterialName     string
-	ProcessID        *int64
-	ProcessCode      *string
-	UOMID            int64
-	UOMCode          string
+	MovementTypeID int64
+	MovementCode   string
+	MaterialID     int64
+	MaterialCode   string
+	MaterialName   string
+	ProcessID      *int64
+	ProcessCode    *string
+	UOMID          int64
+	UOMCode        string
 }
 
 // MatrixCell is one editable cell of the planning matrix.
