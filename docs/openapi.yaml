@@ -1,0 +1,1749 @@
+openapi: 3.0.3
+
+info:
+  title: Sugar Production Planning API
+  version: "1.0.0"
+  description: |
+    Multi-company production planning versus actual.
+
+    **One login, many companies.** The access token carries no company. Every
+    company-dependent call names the company explicitly — as a path parameter,
+    a `companyId` query parameter or the `X-Company-Id` header — and the server
+    re-validates that the caller is entitled to it. The client-supplied company
+    is a request parameter, never an assertion of rights.
+
+    Because there is no global company context, two browser tabs can operate on
+    two companies at the same time without interfering.
+
+servers:
+  - url: /api/v1
+
+tags:
+  - name: Authentication
+  - name: Master data
+  - name: Planning
+  - name: Actual production
+  - name: Inventory
+  - name: Reporting
+  - name: Data dictionary
+  - name: Administration
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # --- authentication -----------------------------------------------------
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Sign in
+      description: |
+        Returns the token pair together with every company the user is
+        authorised for and the permissions that apply in each. This response
+        is what fills the company drop-down of each screen.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Too many attempts }
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Exchange a refresh token
+      description: |
+        Rotates the refresh token: the presented one is revoked and linked to
+        its successor, so replaying a stolen token after a legitimate refresh
+        fails and is visible in the chain.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TokenPair' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Revoke every refresh token of the caller
+      responses:
+        '204': { description: Signed out }
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: The caller and the companies they may work in
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Profile' }
+
+  /auth/change-password:
+    post:
+      tags: [Authentication]
+      summary: Change the caller's password
+      description: Existing sessions are revoked, so a compromised session cannot survive the change.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 12 }
+      responses:
+        '204': { description: Password changed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  # --- master data --------------------------------------------------------
+
+  /materials:
+    get:
+      tags: [Master data]
+      summary: List materials (cross-company master data)
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200': { $ref: '#/components/responses/MaterialList' }
+    post:
+      tags: [Master data]
+      summary: Create a material
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaterialRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Material' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /materials/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+      - $ref: '#/components/parameters/CompanyIdQuery'
+    get:
+      tags: [Master data]
+      summary: Read one material
+      responses:
+        '200': { $ref: '#/components/responses/Material' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Master data]
+      summary: Change a material
+      description: The request must carry the version it read; a stale version is a 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaterialRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Material' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Master data]
+      summary: Deactivate a material
+      description: Master data is deactivated, never physically deleted.
+      parameters:
+        - name: version
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Deactivated }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /companies/{companyId}/materials:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+    get:
+      tags: [Master data]
+      summary: Materials with their relevance flags for this company
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    put:
+      tags: [Master data]
+      summary: Set the relevance flags of one material in this company
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CompanyMaterialRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+
+  /companies/{companyId}/warehouses:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+    get:
+      tags: [Master data]
+      summary: List warehouses, tanks and silos
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Master data]
+      summary: Create a storage location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WarehouseRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericObject' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /companies/{companyId}/warehouses/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Master data]
+      summary: Read one storage location with its allowed materials
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    put:
+      tags: [Master data]
+      summary: Change a storage location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WarehouseRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    delete:
+      tags: [Master data]
+      summary: Deactivate a storage location
+      parameters:
+        - name: version
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: Deactivated }
+
+  /companies/{companyId}/production-lines:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+    get:
+      tags: [Master data]
+      summary: List production lines
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Master data]
+      summary: Create a production line
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object } } }
+      responses:
+        '201': { $ref: '#/components/responses/GenericObject' }
+
+  /companies/{companyId}/seasons:
+    parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+    get:
+      tags: [Master data]
+      summary: List seasons
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Master data]
+      summary: Create a season
+      description: Seasons of one company must not overlap; an overlap is `E-VAL-013`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeasonRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericObject' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /processes:
+    get:
+      tags: [Master data]
+      summary: List production processes
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /processes/{id}/materials:
+    put:
+      tags: [Master data]
+      summary: Declare the input and output materials of a process
+      description: |
+        This is what drives the production routing rules. A material flagged
+        `requiresConditioning` must reach its finished-goods warehouse through
+        the condition silo; adding a new route is a master-data change, not a
+        code change.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: '#/components/schemas/ProcessMaterialRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /movement-types:
+    get:
+      tags: [Master data]
+      summary: List movement types
+      description: |
+        `direction` is the contract: an inventory quantity is always positive
+        and the movement type decides whether it adds to or subtracts from
+        stock.
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /uoms:
+    get:
+      tags: [Master data]
+      summary: List units of measure
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /packaging-types:
+    get:
+      tags: [Master data]
+      summary: List packaging types
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  # --- planning -----------------------------------------------------------
+
+  /companies/{companyId}/seasons/{seasonId}/planning-versions:
+    parameters:
+      - $ref: '#/components/parameters/CompanyIdPath'
+      - name: seasonId
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+    get:
+      tags: [Planning]
+      summary: List the planning versions of a season
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Planning]
+      summary: Create a planning version
+      description: |
+        Version numbering is open-ended. Omit `versionNo` to let the server
+        allocate the next free number.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanningVersionRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/PlanningVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /planning-versions/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+      - $ref: '#/components/parameters/CompanyIdQuery'
+    get:
+      tags: [Planning]
+      summary: Read a planning version
+      responses:
+        '200': { $ref: '#/components/responses/PlanningVersion' }
+    put:
+      tags: [Planning]
+      summary: Change the descriptive attributes of a version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanningVersionRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/PlanningVersion' }
+
+  /planning-versions/{id}/copy:
+    post:
+      tags: [Planning]
+      summary: Copy a version into a new, independent one
+      description: |
+        The copy is a deep snapshot: every header and item is duplicated and
+        nothing is shared with the source. Editing the copy can never change
+        the original — the only link is the informational
+        `copiedFromVersionId`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [versionName]
+              properties:
+                newVersionNo: { type: integer, minimum: 1 }
+                versionName: { type: string }
+                description: { type: string, nullable: true }
+      responses:
+        '201': { $ref: '#/components/responses/PlanningVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /planning-versions/{id}/submit:
+    post:
+      tags: [Planning]
+      summary: Submit a draft for approval
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/PlanningVersion' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /planning-versions/{id}/approve:
+    post:
+      tags: [Planning]
+      summary: Approve a submitted version
+      description: |
+        With the four-eyes rule enabled the approver must be somebody other
+        than the creator, which is `E-PLAN-010`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/PlanningVersion' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /planning-versions/{id}/lock:
+    post:
+      tags: [Planning]
+      summary: Lock an approved version
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/PlanningVersion' }
+
+  /planning-versions/{id}/cancel:
+    post:
+      tags: [Planning]
+      summary: Cancel a version
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/PlanningVersion' }
+
+  /plans:
+    get:
+      tags: [Planning]
+      summary: List plan documents
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: versionId, in: query, schema: { type: integer, format: int64 } }
+        - { name: movementTypeId, in: query, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /plans/{headerId}/items:
+    get:
+      tags: [Planning]
+      summary: Read the items of a plan document
+      parameters:
+        - name: headerId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /plans/matrix:
+    get:
+      tags: [Planning]
+      summary: Read the Date × Line planning grid
+      description: |
+        Returns one row per day of the range — including days with no value —
+        so the client can render a complete grid, together with the production
+        lines that form the columns.
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: versionId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: movementTypeId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: materialId, in: query, required: true, schema: { type: integer, format: int64 } }
+        - { name: processId, in: query, schema: { type: integer, format: int64 } }
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: The grid
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Matrix' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+    post:
+      tags: [Planning]
+      summary: Save the Date × Line planning grid
+      description: |
+        An idempotent upsert keyed on
+        `(document, date, production line, material, process)`: replaying the
+        same payload produces the same grid rather than duplicate rows.
+
+        A `null` quantity means *leave the stored value unchanged*. A cell the
+        payload omits is **deleted**, unless `partialUpdate` is true, in which
+        case anything not mentioned is left alone.
+
+        Writing to an approved, locked or cancelled version is refused with
+        `E-PLAN-007`, enforced both in the service and by a database trigger.
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MatrixSaveRequest' }
+      responses:
+        '200':
+          description: The saved grid, read back
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/Matrix' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  # --- actual production --------------------------------------------------
+
+  /actuals:
+    get:
+      tags: [Actual production]
+      summary: List actual production documents
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: dateFrom, in: query, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, schema: { type: string, format: date } }
+        - { name: movementTypeId, in: query, schema: { type: integer, format: int64 } }
+        - { name: lineId, in: query, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Actual production]
+      summary: Create a draft production document
+      description: |
+        Actuals are independent of planning: a document carries no reference to
+        a planning version and can be recorded whether or not a plan exists.
+
+        Supplying `Idempotency-Key` makes a retry after a timeout return the
+        document the first attempt created instead of a second one.
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActualHeaderRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/ActualDocument' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /actuals/{headerId}:
+    parameters:
+      - name: headerId
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+      - $ref: '#/components/parameters/CompanyIdQuery'
+    get:
+      tags: [Actual production]
+      summary: Read a production document with its items
+      responses:
+        '200': { $ref: '#/components/responses/ActualDocument' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Actual production]
+      summary: Change a draft
+      description: A posted document is immutable; it is corrected by a reversal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActualHeaderRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/ActualDocument' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /actuals/{headerId}/post:
+    post:
+      tags: [Actual production]
+      summary: Post a document
+      description: |
+        Writes the document and its inventory movements in one transaction.
+        The posting validations run here: the material must be inventory
+        managed in this company, the location must accept it, stock may not go
+        negative, capacity may not be exceeded, the date must fall in an open
+        season, and the production routing rules must hold.
+      parameters:
+        - name: headerId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/ActualDocument' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /actuals/{headerId}/reverse:
+    post:
+      tags: [Actual production]
+      summary: Reverse a posted document
+      description: |
+        Every movement the document generated gets an opposite entry and the
+        document is flagged reversed. Nothing is deleted.
+      parameters:
+        - name: headerId
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                remark: { type: string, nullable: true }
+      responses:
+        '200': { $ref: '#/components/responses/ActualDocument' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  # --- inventory ----------------------------------------------------------
+
+  /inventory/movements:
+    get:
+      tags: [Inventory]
+      summary: Read the movement ledger
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: warehouseId, in: query, schema: { type: integer, format: int64 } }
+        - { name: materialId, in: query, schema: { type: integer, format: int64 } }
+        - { name: movementTypeId, in: query, schema: { type: integer, format: int64 } }
+        - { name: documentNo, in: query, schema: { type: string } }
+        - { name: dateFrom, in: query, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Inventory]
+      summary: Record a manual movement
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MovementRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericList' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /inventory/movements/{id}/reverse:
+    post:
+      tags: [Inventory]
+      summary: Reverse one movement
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { remark: { type: string, nullable: true } }
+      responses:
+        '201': { $ref: '#/components/responses/GenericObject' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /inventory/transfers:
+    post:
+      tags: [Inventory]
+      summary: Transfer stock between two locations of one company
+      description: |
+        Writes two linked movements sharing a transfer group. A transfer may
+        never cross a company boundary — that is `E-VAL-010`, enforced in the
+        service and again by a database trigger.
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericList' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /inventory/adjustments:
+    post:
+      tags: [Inventory]
+      summary: Record an inventory correction
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MovementRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericList' }
+
+  /inventory/balances:
+    get:
+      tags: [Inventory]
+      summary: Stock balances as of a date
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: warehouseId, in: query, schema: { type: integer, format: int64 } }
+        - { name: materialId, in: query, schema: { type: integer, format: int64 } }
+        - { name: asOfDate, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /inventory/capacity:
+    get:
+      tags: [Inventory]
+      summary: Capacity utilisation per storage location
+      description: |
+        A location with no maintained capacity is unlimited: `utilisationPct`
+        is `null` and `trafficLight` is `NONE` — never `0` and never infinite.
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: warehouseId, in: query, schema: { type: integer, format: int64 } }
+        - { name: asOfDate, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Capacity per location
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Capacity' }
+
+  /inventory/reconcile:
+    post:
+      tags: [Inventory]
+      summary: Rebuild the balances from the ledger and report any drift
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+
+  # --- reporting ----------------------------------------------------------
+
+  /reports/plan-vs-actual:
+    get:
+      tags: [Reporting]
+      summary: Plan versus actual for one company
+      description: |
+        A full outer join of plan and actual, so a material that was planned
+        but never produced and one produced without a plan both appear.
+        Quantities are converted to the material's base unit before they are
+        compared; a row whose conversion is not maintained is flagged rather
+        than silently added up.
+
+        `variancePct` is `null` where a percentage is undefined — production
+        against a zero plan. It is never rendered as 0 or 100 by accident.
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: seasonId, in: query, schema: { type: integer, format: int64 } }
+        - { name: versionId, in: query, schema: { type: integer, format: int64 } }
+        - { name: latestApproved, in: query, schema: { type: boolean } }
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+        - name: groupBy
+          in: query
+          schema: { type: string, enum: [material, line, process, date], default: material }
+      responses:
+        '200':
+          description: The report
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/PlanVsActual' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /reports/plan-vs-actual/consolidated:
+    get:
+      tags: [Reporting]
+      summary: Plan versus actual across several companies
+      description: |
+        Every named company is validated individually. An unauthorised id
+        fails the whole request rather than being filtered out silently, which
+        keeps the audit trail unambiguous.
+      parameters:
+        - name: companyIds
+          in: query
+          required: true
+          schema: { type: string }
+          example: "1000,2000,3000"
+        - { name: seasonId, in: query, schema: { type: integer, format: int64 } }
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+        - name: groupBy
+          in: query
+          schema: { type: string, enum: [material, line, process, date] }
+      responses:
+        '200':
+          description: The consolidated report
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/PlanVsActual' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /reports/production-summary:
+    get:
+      tags: [Reporting]
+      summary: Produced quantity by material and process
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /reports/inventory-movement:
+    get:
+      tags: [Reporting]
+      summary: Movement report
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: dateFrom, in: query, required: true, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, required: true, schema: { type: string, format: date } }
+        - { name: warehouseId, in: query, schema: { type: integer, format: int64 } }
+        - { name: materialId, in: query, schema: { type: integer, format: int64 } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /reports/capacity-utilisation:
+    get:
+      tags: [Reporting]
+      summary: Capacity utilisation report
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: asOfDate, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  # --- data dictionary and browser ----------------------------------------
+
+  /dd/tables:
+    get:
+      tags: [Data dictionary]
+      summary: List documented tables
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - { name: module, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: browsableOnly, in: query, schema: { type: boolean } }
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /dd/tables/{tableName}:
+    parameters:
+      - name: tableName
+        in: path
+        required: true
+        schema: { type: string }
+      - $ref: '#/components/parameters/CompanyIdQuery'
+    get:
+      tags: [Data dictionary]
+      summary: Read one table's metadata
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    put:
+      tags: [Data dictionary]
+      summary: Maintain a table's business description
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+
+  /dd/tables/{tableName}/fields:
+    get:
+      tags: [Data dictionary]
+      summary: List a table's fields
+      parameters:
+        - name: tableName
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /dd/fields/{id}:
+    put:
+      tags: [Data dictionary]
+      summary: Maintain a field's labels and business description
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+
+  /dd/domains:
+    get:
+      tags: [Data dictionary]
+      summary: List domains
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /browser/{tableName}:
+    get:
+      tags: [Data dictionary]
+      summary: Browse a table
+      description: |
+        The table must be flagged browsable in the dictionary, every field
+        named in `fields`, `sort` and `filter` must exist on it, and for a
+        company-dependent table the company predicate is injected server-side
+        and cannot be removed by the caller. Personal data is masked, the row
+        count is capped and every query is written to the audit log.
+      parameters:
+        - name: tableName
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - name: fields
+          in: query
+          schema: { type: string }
+          description: Comma-separated field list; defaults to every readable field.
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Result set
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          tableName: { type: string }
+                          fields: { type: array, items: { type: string } }
+                          rows:
+                            type: array
+                            items: { type: object, additionalProperties: true }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  # --- administration -----------------------------------------------------
+
+  /admin/users:
+    get:
+      tags: [Administration]
+      summary: List users
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdQuery'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+    post:
+      tags: [Administration]
+      summary: Create a user with its per-company roles
+      description: |
+        A user belongs to no company of its own; the assignments are the only
+        link, and the same user can hold a different role in each company.
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/GenericObject' }
+        '422': { $ref: '#/components/responses/BusinessRule' }
+
+  /admin/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64 }
+      - $ref: '#/components/parameters/CompanyIdQuery'
+    get:
+      tags: [Administration]
+      summary: Read a user
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+    put:
+      tags: [Administration]
+      summary: Change a user and reconcile its assignments
+      description: |
+        Sending an assignment list reconciles it: roles present are granted and
+        roles the user currently holds in that company but which the payload
+        omits are revoked.
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+
+  /admin/users/{id}/assignments:
+    get:
+      tags: [Administration]
+      summary: The authorisation matrix of one user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '200': { $ref: '#/components/responses/GenericObject' }
+
+  /admin/users/{id}/reset-password:
+    post:
+      tags: [Administration]
+      summary: Reset a password and force a change at next login
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64 }
+        - $ref: '#/components/parameters/CompanyIdQuery'
+      responses:
+        '204': { description: Reset }
+
+  /admin/roles:
+    get:
+      tags: [Administration]
+      summary: List roles with their permissions
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /admin/permissions:
+    get:
+      tags: [Administration]
+      summary: List the permission catalogue
+      parameters: [{ $ref: '#/components/parameters/CompanyIdQuery' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /companies/{companyId}/number-ranges:
+    get:
+      tags: [Administration]
+      summary: Document number ranges of a company
+      parameters: [{ $ref: '#/components/parameters/CompanyIdPath' }]
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+  /companies/{companyId}/audit-log:
+    get:
+      tags: [Administration]
+      summary: Change history, scoped to this company
+      parameters:
+        - $ref: '#/components/parameters/CompanyIdPath'
+        - { name: tableName, in: query, schema: { type: string } }
+        - { name: recordId, in: query, schema: { type: integer, format: int64 } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { $ref: '#/components/responses/GenericList' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        The access token identifies the user and nothing else. It carries no
+        company, which is why every company-dependent call must name one.
+
+  parameters:
+    CompanyIdPath:
+      name: companyId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    CompanyIdQuery:
+      name: companyId
+      in: query
+      required: true
+      description: |
+        The company to work in. May also be supplied as the `X-Company-Id`
+        header. It is re-validated against the caller's authorisations on
+        every request.
+      schema: { type: integer, format: int64 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      schema: { type: string }
+      description: Makes a retried POST return the original document.
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+    Sort:
+      name: sort
+      in: query
+      schema: { type: string }
+      description: 'Comma-separated field list; a leading minus sorts descending, e.g. `-created_at`.'
+    Search:
+      name: search
+      in: query
+      schema: { type: string }
+
+  schemas:
+
+    Envelope:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data: {}
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    Meta:
+      type: object
+      properties:
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        requestId: { type: string }
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: |
+                Stable business error code, e.g. `E-AUTH-003`
+                (company not authorised), `E-PLAN-007` (version not editable),
+                `E-INV-012` (capacity exceeded), `E-PROD-022` (conditioning
+                step missing), `E-VAL-010` (cross-company reference).
+              example: E-INV-012
+            message: { type: string }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string }
+                  value: { type: string }
+                  message: { type: string }
+
+    AuditFields:
+      type: object
+      properties:
+        isActive: { type: boolean }
+        version:
+          type: integer
+          description: Optimistic lock; an update must send the version it read.
+        createdBy: { type: integer, format: int64, nullable: true }
+        createdAt: { type: string, format: date-time }
+        changedBy: { type: integer, format: int64, nullable: true }
+        changedAt: { type: string, format: date-time }
+
+    Quantity:
+      type: string
+      description: |
+        A decimal transported as a string so a NUMERIC(18,3) never loses
+        precision passing through a floating-point number.
+      example: "5000.000"
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string, format: password }
+
+    TokenPair:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        tokenType: { type: string, example: Bearer }
+        expiresIn: { type: integer, description: Seconds until the access token expires }
+
+    CompanyAccess:
+      type: object
+      description: One company the user may work in, with what they may do there.
+      properties:
+        companyId: { type: integer, format: int64 }
+        companyCode: { type: string }
+        companyName: { type: string }
+        localCurrency: { type: string }
+        timezone: { type: string }
+        isDefault: { type: boolean, description: Pre-selected, but freely changeable. }
+        roles: { type: array, items: { type: string } }
+        permissions: { type: array, items: { type: string } }
+
+    User:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        username: { type: string }
+        email: { type: string }
+        fullName: { type: string }
+        locale: { type: string }
+        isLocked: { type: boolean }
+        mustChangePassword: { type: boolean }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+
+    LoginResponse:
+      type: object
+      properties:
+        tokens: { $ref: '#/components/schemas/TokenPair' }
+        user: { $ref: '#/components/schemas/User' }
+        companies:
+          type: array
+          items: { $ref: '#/components/schemas/CompanyAccess' }
+        mustChangePassword: { type: boolean }
+
+    Profile:
+      type: object
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        companies:
+          type: array
+          items: { $ref: '#/components/schemas/CompanyAccess' }
+
+    MaterialRequest:
+      type: object
+      required: [materialCode, materialName, materialType, baseUomId]
+      properties:
+        materialCode: { type: string, maxLength: 40 }
+        materialName: { type: string, maxLength: 200 }
+        materialType:
+          type: string
+          enum: [RAW, SEMI_FINISHED, FINISHED, BY_PRODUCT, UTILITY]
+        materialGroup: { type: string, nullable: true }
+        baseUomId: { type: integer, format: int64 }
+        conditioningRequired:
+          type: boolean
+          description: |
+            Routes a finished grade through the condition silo. Refined and
+            super refined sugar set it; white sugar does not and goes direct.
+        isStockManaged:
+          type: boolean
+          description: False for a utility such as electricity, which is produced but never held as stock.
+        version: { type: integer }
+
+    Material:
+      allOf:
+        - $ref: '#/components/schemas/MaterialRequest'
+        - $ref: '#/components/schemas/AuditFields'
+        - type: object
+          properties:
+            id: { type: integer, format: int64 }
+            baseUomCode: { type: string }
+
+    CompanyMaterialRequest:
+      type: object
+      required: [materialId]
+      properties:
+        materialId: { type: integer, format: int64 }
+        planningEnabled: { type: boolean }
+        productionEnabled: { type: boolean }
+        inventoryEnabled: { type: boolean }
+        salesEnabled: { type: boolean }
+
+    WarehouseRequest:
+      type: object
+      required: [warehouseCode, warehouseName, warehouseType]
+      properties:
+        warehouseCode: { type: string, maxLength: 20 }
+        warehouseName: { type: string, maxLength: 200 }
+        warehouseType:
+          type: string
+          enum: [WAREHOUSE, TANK, SILO, PRODUCTION_STORAGE]
+        capacity:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+          description: Null means unlimited — not zero. A capacity requires its unit.
+        capacityUomId: { type: integer, format: int64, nullable: true }
+        allowNegativeStock: { type: boolean }
+        location: { type: string, nullable: true }
+        allowedMaterialIds:
+          type: array
+          items: { type: integer, format: int64 }
+          description: Restricts a tank or silo to specific materials; empty means any.
+        version: { type: integer }
+
+    SeasonRequest:
+      type: object
+      required: [seasonCode, seasonName, startDate, endDate]
+      properties:
+        seasonCode: { type: string, maxLength: 20 }
+        seasonName: { type: string, maxLength: 200 }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        status: { type: string, enum: [PLANNING, OPEN, CLOSED] }
+        version: { type: integer }
+
+    ProcessMaterialRequest:
+      type: object
+      required: [materialId, ioType]
+      properties:
+        materialId: { type: integer, format: int64 }
+        ioType: { type: string, enum: [INPUT, OUTPUT] }
+        requiresConditioning:
+          type: boolean
+          description: An output flagged here may not be received straight into a finished-goods warehouse.
+        expectedYieldPct: { $ref: '#/components/schemas/Quantity' }
+
+    PlanningVersionRequest:
+      type: object
+      required: [seasonId, versionName]
+      properties:
+        seasonId: { type: integer, format: int64 }
+        versionNo:
+          type: integer
+          minimum: 1
+          description: Omit to let the server allocate the next free number.
+        versionName: { type: string, maxLength: 200 }
+        description: { type: string, nullable: true }
+        version: { type: integer }
+
+    PlanningVersion:
+      allOf:
+        - $ref: '#/components/schemas/AuditFields'
+        - type: object
+          properties:
+            id: { type: integer, format: int64 }
+            companyId: { type: integer, format: int64 }
+            seasonId: { type: integer, format: int64 }
+            versionNo: { type: integer }
+            versionName: { type: string }
+            status:
+              type: string
+              enum: [DRAFT, SUBMITTED, APPROVED, LOCKED, CANCELLED]
+            copiedFromVersionId:
+              type: integer
+              format: int64
+              nullable: true
+              description: Lineage only; a copy shares no row with its source.
+            approvedBy: { type: integer, format: int64, nullable: true }
+            approvedAt: { type: string, format: date-time, nullable: true }
+
+    MatrixSaveRequest:
+      type: object
+      required: [seasonId, versionId, movementTypeId, materialId, uomId, dateFrom, dateTo, rows]
+      properties:
+        seasonId: { type: integer, format: int64 }
+        versionId: { type: integer, format: int64 }
+        movementTypeId: { type: integer, format: int64 }
+        materialId: { type: integer, format: int64 }
+        processId: { type: integer, format: int64, nullable: true }
+        warehouseId: { type: integer, format: int64, nullable: true }
+        uomId: { type: integer, format: int64 }
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
+        partialUpdate:
+          type: boolean
+          description: When true, a cell the payload omits is left alone instead of being deleted.
+        rows:
+          type: array
+          items:
+            type: object
+            required: [planDate, values]
+            properties:
+              planDate: { type: string, format: date }
+              values:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    productionLineId: { type: integer, format: int64, nullable: true }
+                    quantity:
+                      allOf: [{ $ref: '#/components/schemas/Quantity' }]
+                      nullable: true
+                      description: Null leaves the stored value unchanged.
+
+    Matrix:
+      type: object
+      properties:
+        companyId: { type: integer, format: int64 }
+        versionId: { type: integer, format: int64 }
+        versionStatus: { type: string }
+        movementTypeId: { type: integer, format: int64 }
+        materialId: { type: integer, format: int64 }
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
+        lines:
+          type: array
+          description: The production lines that form the columns.
+          items:
+            type: object
+            properties:
+              productionLineId: { type: integer, format: int64 }
+              lineCode: { type: string }
+              lineName: { type: string }
+        rows:
+          type: array
+          description: One entry per day of the range, including days with no value.
+          items:
+            type: object
+            properties:
+              planDate: { type: string, format: date }
+              values:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    productionLineId: { type: integer, format: int64, nullable: true }
+                    quantity: { $ref: '#/components/schemas/Quantity' }
+                    uomId: { type: integer, format: int64 }
+                    version: { type: integer }
+
+    ActualItemRequest:
+      type: object
+      required: [actualDate, materialId, quantity, uomId]
+      properties:
+        actualDate: { type: string, format: date }
+        productionLineId: { type: integer, format: int64, nullable: true }
+        materialId: { type: integer, format: int64 }
+        processId: { type: integer, format: int64, nullable: true }
+        warehouseId:
+          type: integer
+          format: int64
+          nullable: true
+          description: Omitted for a quantity that is produced but not stock managed.
+        packagingTypeId: { type: integer, format: int64, nullable: true }
+        quantity: { $ref: '#/components/schemas/Quantity' }
+        uomId: { type: integer, format: int64 }
+        shift: { type: string, nullable: true }
+        remark: { type: string, nullable: true }
+
+    ActualHeaderRequest:
+      type: object
+      required: [movementTypeId, postingDate]
+      properties:
+        seasonId:
+          type: integer
+          format: int64
+          nullable: true
+          description: Resolved from the posting date when omitted.
+        movementTypeId: { type: integer, format: int64 }
+        productionLineId: { type: integer, format: int64, nullable: true }
+        description: { type: string, nullable: true }
+        postingDate: { type: string, format: date }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ActualItemRequest' }
+        version: { type: integer }
+
+    ActualDocument:
+      allOf:
+        - $ref: '#/components/schemas/AuditFields'
+        - type: object
+          properties:
+            id: { type: integer, format: int64 }
+            companyId: { type: integer, format: int64 }
+            documentNo:
+              type: string
+              description: '`{PREFIX}-{COMPANY}-{YEAR}-{SEQ}`'
+              example: ACT-1000-2026-000001
+            postingDate: { type: string, format: date }
+            postingStatus: { type: string, enum: [DRAFT, POSTED, REVERSED] }
+            items:
+              type: array
+              items: { type: object }
+
+    MovementRequest:
+      type: object
+      required: [transactionDate, materialId, warehouseId, movementTypeId, quantity, uomId]
+      properties:
+        transactionDate: { type: string, format: date }
+        materialId: { type: integer, format: int64 }
+        warehouseId: { type: integer, format: int64 }
+        movementTypeId: { type: integer, format: int64 }
+        packagingTypeId: { type: integer, format: int64, nullable: true }
+        processId: { type: integer, format: int64, nullable: true }
+        quantity:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          description: Always positive; the movement type supplies the direction.
+        uomId: { type: integer, format: int64 }
+        remark: { type: string, nullable: true }
+
+    TransferRequest:
+      type: object
+      required: [fromWarehouseId, toWarehouseId, materialId, quantity, uomId, transactionDate]
+      properties:
+        fromWarehouseId: { type: integer, format: int64 }
+        toWarehouseId: { type: integer, format: int64 }
+        materialId: { type: integer, format: int64 }
+        packagingTypeId: { type: integer, format: int64, nullable: true }
+        quantity: { $ref: '#/components/schemas/Quantity' }
+        uomId: { type: integer, format: int64 }
+        transactionDate: { type: string, format: date }
+        remark: { type: string, nullable: true }
+
+    Capacity:
+      type: object
+      properties:
+        warehouseId: { type: integer, format: int64 }
+        warehouseCode: { type: string }
+        warehouseName: { type: string }
+        warehouseType: { type: string }
+        capacity:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+        currentStock: { $ref: '#/components/schemas/Quantity' }
+        available:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+        utilisationPct:
+          allOf: [{ $ref: '#/components/schemas/Quantity' }]
+          nullable: true
+          description: Null for an unlimited location.
+        trafficLight:
+          type: string
+          enum: [GREEN, AMBER, RED, NONE]
+
+    PlanVsActual:
+      type: object
+      properties:
+        groupBy: { type: string }
+        dateFrom: { type: string, format: date }
+        dateTo: { type: string, format: date }
+        versionId: { type: integer, format: int64, nullable: true }
+        totalPlan: { $ref: '#/components/schemas/Quantity' }
+        totalActual: { $ref: '#/components/schemas/Quantity' }
+        totalVariance: { $ref: '#/components/schemas/Quantity' }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              companyId: { type: integer, format: int64 }
+              companyCode: { type: string }
+              groupKey: { type: string }
+              groupLabel: { type: string }
+              uomCode: { type: string }
+              planQty: { $ref: '#/components/schemas/Quantity' }
+              actualQty: { $ref: '#/components/schemas/Quantity' }
+              variance: { $ref: '#/components/schemas/Quantity' }
+              variancePct:
+                allOf: [{ $ref: '#/components/schemas/Quantity' }]
+                nullable: true
+                description: Null where a percentage is undefined — an actual against a zero plan.
+              conversionMissing:
+                type: boolean
+                description: The row mixes units that cannot be converted, so its variance is not comparable.
+
+    CreateUserRequest:
+      type: object
+      required: [username, email, fullName, password, assignments]
+      properties:
+        username: { type: string, maxLength: 60 }
+        email: { type: string, format: email }
+        fullName: { type: string }
+        password: { type: string, minLength: 12 }
+        locale: { type: string }
+        assignments:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [companyId, roleIds]
+            properties:
+              companyId: { type: integer, format: int64 }
+              roleIds:
+                type: array
+                items: { type: integer, format: int64 }
+              isDefault: { type: boolean }
+
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Unauthorized:
+      description: Missing, invalid or expired token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Forbidden:
+      description: Authenticated but not entitled to this company or action
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    NotFound:
+      description: Not found within the authorised company
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: Stale record, duplicate key or status conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    BusinessRule:
+      description: Business rule violated
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    GenericObject:
+      description: One record
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+    GenericList:
+      description: A page of records
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+    Material:
+      description: One material
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - properties:
+                  data: { $ref: '#/components/schemas/Material' }
+    MaterialList:
+      description: A page of materials
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Material' }
+    PlanningVersion:
+      description: One planning version
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - properties:
+                  data: { $ref: '#/components/schemas/PlanningVersion' }
+    ActualDocument:
+      description: One production document
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - properties:
+                  data: { $ref: '#/components/schemas/ActualDocument' }
