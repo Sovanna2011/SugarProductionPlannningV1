@@ -5,8 +5,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/Sovanna2011/SugarProductionPlannningV1/backend/internal/audit"
 	"github.com/Sovanna2011/SugarProductionPlannningV1/backend/internal/config"
 	"github.com/Sovanna2011/SugarProductionPlannningV1/backend/internal/database"
@@ -311,6 +309,3 @@ func (s *AuthService) buildProfile(ctx context.Context, user *model.User) (*Prof
 
 	return &Profile{User: *user, Companies: companies}, nil
 }
-
-// NewSessionID produces the correlation id used in logs and audit records.
-func NewSessionID() string { return uuid.NewString() }

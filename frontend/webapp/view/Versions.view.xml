@@ -1,0 +1,66 @@
+<mvc:View
+	controllerName="sugar.planning.controller.Versions"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:mvc="sap.ui.core.mvc">
+
+	<Page title="{i18n>versionsTitle}" showNavButton="true" navButtonPress=".onNavBack">
+		<headerContent>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<subHeader>
+			<OverflowToolbar>
+				<Label text="{i18n>company}" required="true"/>
+				<ComboBox selectedKey="{view>/companyId}" items="{app>/companies}"
+					change=".onCompanyChange" width="16rem">
+					<core:Item key="{app>companyId}" text="{app>companyCode} — {app>companyName}"/>
+				</ComboBox>
+
+				<Label text="{i18n>season}"/>
+				<ComboBox selectedKey="{view>/seasonId}" items="{view>/seasons}"
+					change=".onSeasonChange" width="12rem">
+					<core:Item key="{view>id}" text="{view>seasonCode}"/>
+				</ComboBox>
+
+				<ToolbarSpacer/>
+				<Button text="{i18n>newVersion}" icon="sap-icon://add"
+					press=".onCreate" enabled="{view>/canCreate}"/>
+			</OverflowToolbar>
+		</subHeader>
+
+		<Table id="versionTable" items="{view>/versions}" class="sapUiSmallMargin"
+			noDataText="{i18n>noVersions}">
+			<columns>
+				<Column><Text text="{i18n>versionNo}"/></Column>
+				<Column><Text text="{i18n>versionName}"/></Column>
+				<Column><Text text="{i18n>status}"/></Column>
+				<Column><Text text="{i18n>copiedFrom}"/></Column>
+				<Column hAlign="End"><Text text="{i18n>actions}"/></Column>
+			</columns>
+			<items>
+				<ColumnListItem>
+					<cells>
+						<ObjectIdentifier title="V{view>versionNo}"/>
+						<Text text="{view>versionName}"/>
+						<ObjectStatus text="{view>status}"
+							state="{path: 'view>status', formatter: '.formatter.versionState'}"/>
+						<Text text="{= ${view>copiedFromVersionId} ? 'V' + ${view>copiedFromVersionId} : '—' }"/>
+						<HBox justifyContent="End">
+							<Button text="{i18n>copy}" icon="sap-icon://copy" press=".onCopy"
+								enabled="{view>/canCopy}" class="sapUiTinyMarginEnd"/>
+							<Button text="{i18n>submit}" press=".onSubmit"
+								enabled="{= ${view>status} === 'DRAFT' &amp;&amp; ${view>/canSubmit} }"
+								class="sapUiTinyMarginEnd"/>
+							<Button text="{i18n>approve}" type="Emphasized" press=".onApprove"
+								enabled="{= ${view>status} === 'SUBMITTED' &amp;&amp; ${view>/canApprove} }"
+								class="sapUiTinyMarginEnd"/>
+							<Button text="{i18n>lock}" press=".onLock"
+								enabled="{= ${view>status} === 'APPROVED' &amp;&amp; ${view>/canLock} }"/>
+						</HBox>
+					</cells>
+				</ColumnListItem>
+			</items>
+		</Table>
+	</Page>
+</mvc:View>

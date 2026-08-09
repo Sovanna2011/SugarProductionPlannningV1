@@ -1,0 +1,111 @@
+<mvc:View
+	controllerName="sugar.planning.controller.PlanVsActual"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:mvc="sap.ui.core.mvc">
+
+	<Page title="{i18n>planVsActualTitle}" showNavButton="true" navButtonPress=".onNavBack">
+		<headerContent>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<subHeader>
+			<OverflowToolbar>
+				<Label text="{i18n>company}" required="true"/>
+				<ComboBox selectedKey="{view>/companyId}" items="{app>/companies}"
+					change=".onCompanyChange" width="16rem">
+					<core:Item key="{app>companyId}" text="{app>companyCode} — {app>companyName}"/>
+				</ComboBox>
+
+				<Label text="{i18n>season}"/>
+				<ComboBox selectedKey="{view>/seasonId}" items="{view>/seasons}"
+					change=".onSeasonChange" width="12rem">
+					<core:Item key="{view>id}" text="{view>seasonCode}"/>
+				</ComboBox>
+
+				<Label text="{i18n>version}"/>
+				<ComboBox selectedKey="{view>/versionId}" items="{view>/versions}" width="16rem">
+					<core:Item key="{view>id}" text="V{view>versionNo} ({view>status})"/>
+				</ComboBox>
+
+				<Label text="{i18n>groupBy}"/>
+				<Select selectedKey="{view>/groupBy}" width="9rem">
+					<core:Item key="material" text="{i18n>material}"/>
+					<core:Item key="line" text="{i18n>productionLine}"/>
+					<core:Item key="process" text="{i18n>process}"/>
+					<core:Item key="date" text="{i18n>date}"/>
+				</Select>
+
+				<Label text="{i18n>dateFrom}"/>
+				<DatePicker value="{view>/dateFrom}" valueFormat="yyyy-MM-dd"
+					displayFormat="yyyy-MM-dd" width="9rem"/>
+				<Label text="{i18n>dateTo}"/>
+				<DatePicker value="{view>/dateTo}" valueFormat="yyyy-MM-dd"
+					displayFormat="yyyy-MM-dd" width="9rem"/>
+
+				<ToolbarSpacer/>
+				<Button text="{i18n>run}" type="Emphasized" icon="sap-icon://begin"
+					press=".onRun"/>
+			</OverflowToolbar>
+		</subHeader>
+
+		<VBox class="sapUiSmallMargin">
+			<HBox class="sapUiSmallMarginBottom" wrap="Wrap">
+				<GenericTile header="{i18n>totalPlan}" class="sapUiTinyMarginEnd sugarKpi">
+					<TileContent>
+						<NumericContent
+							value="{path: 'view>/report/totalPlan', formatter: '.formatter.quantity'}"
+							valueColor="Neutral"/>
+					</TileContent>
+				</GenericTile>
+				<GenericTile header="{i18n>totalActual}" class="sapUiTinyMarginEnd sugarKpi">
+					<TileContent>
+						<NumericContent
+							value="{path: 'view>/report/totalActual', formatter: '.formatter.quantity'}"
+							valueColor="Good"/>
+					</TileContent>
+				</GenericTile>
+				<GenericTile header="{i18n>totalVariance}" class="sugarKpi">
+					<TileContent>
+						<NumericContent
+							value="{path: 'view>/report/totalVariance', formatter: '.formatter.quantity'}"
+							indicator="{= Number(${view>/report/totalVariance}) >= 0 ? 'Up' : 'Down' }"
+							valueColor="{= Number(${view>/report/totalVariance}) >= 0 ? 'Good' : 'Critical' }"/>
+					</TileContent>
+				</GenericTile>
+			</HBox>
+
+			<Table items="{view>/report/lines}" noDataText="{i18n>noReportData}">
+				<columns>
+					<Column><Text text="{i18n>company}"/></Column>
+					<Column><Text text="{i18n>groupKey}"/></Column>
+					<Column hAlign="End"><Text text="{i18n>planQty}"/></Column>
+					<Column hAlign="End"><Text text="{i18n>actualQty}"/></Column>
+					<Column hAlign="End"><Text text="{i18n>variance}"/></Column>
+					<Column hAlign="End"><Text text="{i18n>variancePct}"/></Column>
+				</columns>
+				<items>
+					<ColumnListItem>
+						<cells>
+							<Text text="{view>companyCode}"/>
+							<ObjectIdentifier title="{view>groupKey}" text="{view>groupLabel}"/>
+							<Text text="{path: 'view>planQty', formatter: '.formatter.quantity'}"/>
+							<Text text="{path: 'view>actualQty', formatter: '.formatter.quantity'}"/>
+							<ObjectNumber
+								number="{path: 'view>variance', formatter: '.formatter.quantity'}"
+								unit="{view>uomCode}"
+								state="{= Number(${view>variance}) >= 0 ? 'Success' : 'Warning' }"/>
+							<!--
+								A null percentage is rendered as "n/a": production
+								against a zero plan has no percentage at all (§F6).
+							-->
+							<ObjectStatus
+								text="{path: 'view>variancePct', formatter: '.formatter.variancePercent'}"
+								state="{path: 'view>variancePct', formatter: '.formatter.varianceState'}"/>
+						</cells>
+					</ColumnListItem>
+				</items>
+			</Table>
+		</VBox>
+	</Page>
+</mvc:View>

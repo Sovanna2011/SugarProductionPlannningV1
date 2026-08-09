@@ -1,0 +1,79 @@
+{
+  "_version": "1.60.0",
+  "sap.app": {
+    "id": "sugar.planning",
+    "type": "application",
+    "i18n": "i18n/i18n.properties",
+    "title": "{{appTitle}}",
+    "description": "{{appDescription}}",
+    "applicationVersion": { "version": "1.0.0" },
+    "dataSources": {}
+  },
+  "sap.ui": {
+    "technology": "UI5",
+    "deviceTypes": { "desktop": true, "tablet": true, "phone": false },
+    "theme": "sap_horizon"
+  },
+  "sap.ui5": {
+    "rootView": {
+      "viewName": "sugar.planning.view.App",
+      "type": "XML",
+      "async": true,
+      "id": "app"
+    },
+    "dependencies": {
+      "minUI5Version": "1.120.0",
+      "libs": {
+        "sap.ui.core": {},
+        "sap.m": {},
+        "sap.f": {},
+        "sap.ui.layout": {},
+        "sap.ui.table": {},
+        "sap.viz": {}
+      }
+    },
+    "models": {
+      "i18n": {
+        "type": "sap.ui.model.resource.ResourceModel",
+        "settings": { "bundleName": "sugar.planning.i18n.i18n" }
+      },
+      "app": { "type": "sap.ui.model.json.JSONModel" }
+    },
+    "resources": {
+      "css": [{ "uri": "css/style.css" }]
+    },
+    "routing": {
+      "config": {
+        "routerClass": "sap.m.routing.Router",
+        "viewType": "XML",
+        "viewPath": "sugar.planning.view",
+        "controlId": "appContainer",
+        "controlAggregation": "pages",
+        "async": true,
+        "bypassed": { "target": "home" }
+      },
+      "routes": [
+        { "pattern": "login", "name": "login", "target": "login" },
+        { "pattern": "", "name": "home", "target": "home" },
+        { "pattern": "planning", "name": "planning", "target": "planning" },
+        { "pattern": "versions", "name": "versions", "target": "versions" },
+        { "pattern": "actual", "name": "actual", "target": "actual" },
+        { "pattern": "inventory", "name": "inventory", "target": "inventory" },
+        { "pattern": "plan-vs-actual", "name": "planVsActual", "target": "planVsActual" },
+        { "pattern": "browser", "name": "browser", "target": "browser" },
+        { "pattern": "dictionary", "name": "dictionary", "target": "dictionary" }
+      ],
+      "targets": {
+        "login":        { "id": "login",        "name": "Login" },
+        "home":         { "id": "home",         "name": "Home" },
+        "planning":     { "id": "planning",     "name": "PlanningMatrix" },
+        "versions":     { "id": "versions",     "name": "Versions" },
+        "actual":       { "id": "actual",       "name": "ActualEntry" },
+        "inventory":    { "id": "inventory",    "name": "Inventory" },
+        "planVsActual": { "id": "planVsActual", "name": "PlanVsActual" },
+        "browser":      { "id": "browser",      "name": "DataBrowser" },
+        "dictionary":   { "id": "dictionary",   "name": "DataDictionary" }
+      }
+    }
+  }
+}

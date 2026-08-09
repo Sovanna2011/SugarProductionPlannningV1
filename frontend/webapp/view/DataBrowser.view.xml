@@ -1,0 +1,64 @@
+<mvc:View
+	controllerName="sugar.planning.controller.DataBrowser"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns:t="sap.ui.table">
+
+	<Page title="{i18n>browserTitle}" showNavButton="true" navButtonPress=".onNavBack">
+		<headerContent>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<subHeader>
+			<OverflowToolbar>
+				<Label text="{i18n>company}"/>
+				<ComboBox selectedKey="{view>/companyId}" items="{app>/companies}"
+					change=".onCompanyChange" width="16rem">
+					<core:Item key="{app>companyId}" text="{app>companyCode} — {app>companyName}"/>
+				</ComboBox>
+
+				<Label text="{i18n>module}"/>
+				<Select selectedKey="{view>/module}" change=".onModuleChange" width="10rem">
+					<core:Item key="" text="{i18n>allModules}"/>
+					<core:Item key="SECURITY" text="SECURITY"/>
+					<core:Item key="MASTER" text="MASTER"/>
+					<core:Item key="PLANNING" text="PLANNING"/>
+					<core:Item key="ACTUAL" text="ACTUAL"/>
+					<core:Item key="INVENTORY" text="INVENTORY"/>
+					<core:Item key="TECHNICAL" text="TECHNICAL"/>
+				</Select>
+
+				<Label text="{i18n>table}"/>
+				<ComboBox selectedKey="{view>/tableName}" items="{view>/tables}"
+					change=".onTableChange" width="20rem">
+					<core:Item key="{view>tableName}" text="{view>tableName} — {view>descriptionEn}"/>
+				</ComboBox>
+
+				<ToolbarSpacer/>
+				<Button text="{i18n>run}" type="Emphasized" icon="sap-icon://begin" press=".onRun"/>
+			</OverflowToolbar>
+		</subHeader>
+
+		<VBox class="sapUiSmallMargin">
+			<!--
+				Only tables the dictionary marks as browsable are offered, and a
+				company-dependent table is always filtered server-side to the
+				companies the user is authorised for (Part G).
+			-->
+			<MessageStrip type="Information" showIcon="true"
+				text="{i18n>browserHint}" class="sapUiSmallMarginBottom"/>
+
+			<t:Table id="resultTable" rows="{view>/rows}" selectionMode="None"
+				visibleRowCountMode="Auto" minAutoRowCount="10">
+				<t:extension>
+					<Toolbar>
+						<Title text="{view>/tableName}"/>
+						<ToolbarSpacer/>
+						<ObjectStatus title="{i18n>rows}" text="{view>/total}"/>
+					</Toolbar>
+				</t:extension>
+			</t:Table>
+		</VBox>
+	</Page>
+</mvc:View>

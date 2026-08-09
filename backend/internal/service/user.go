@@ -115,6 +115,13 @@ func (s *UserService) ResetPassword(ctx context.Context, userID int64, newPasswo
 	return nil
 }
 
+// applyAssignments reconciles the authorisation matrix with what the caller
+// sent: roles present in the payload are granted, and roles the user currently
+// holds in that company but which the payload omits are revoked.
+//
+// Reconciling rather than only adding is what makes it possible to take an
+// authorisation away — an add-only implementation would let a role be granted
+// but never withdrawn.
 func (s *UserService) applyAssignments(ctx context.Context, userID int64, assignments []CompanyRoleAssignment) error {
 	for _, assignment := range assignments {
 		uc := &model.UserCompany{
@@ -125,13 +132,30 @@ func (s *UserService) applyAssignments(ctx context.Context, userID int64, assign
 		if err := s.authz.AssignCompany(ctx, uc); err != nil {
 			return err
 		}
+
+		wanted := make(map[int64]bool, len(assignment.RoleIDs))
 		for _, roleID := range assignment.RoleIDs {
+			wanted[roleID] = true
+
 			ucr := &model.UserCompanyRole{
 				UserID:    userID,
 				CompanyID: assignment.CompanyID,
 				RoleID:    roleID,
 			}
 			if err := s.authz.AssignRole(ctx, ucr); err != nil {
+				return err
+			}
+		}
+
+		current, err := s.authz.Roles(ctx, userID, assignment.CompanyID)
+		if err != nil {
+			return err
+		}
+		for _, role := range current {
+			if wanted[role.ID] {
+				continue
+			}
+			if err := s.authz.RemoveRole(ctx, userID, assignment.CompanyID, role.ID); err != nil {
 				return err
 			}
 		}

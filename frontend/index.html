@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Sugar Production Planning</title>
+
+	<!--
+		SAP UI5 1.120 LTS with the Horizon theme (§A1, §H1). The bootstrap is
+		pinned so a released build cannot drift onto a newer runtime.
+	-->
+	<script
+		id="sap-ui-bootstrap"
+		src="https://sdk.openui5.org/1.120.20/resources/sap-ui-core.js"
+		data-sap-ui-theme="sap_horizon"
+		data-sap-ui-libs="sap.m,sap.f,sap.ui.core,sap.ui.layout,sap.ui.table"
+		data-sap-ui-async="true"
+		data-sap-ui-compat-version="edge"
+		data-sap-ui-frame-options="trusted"
+		data-sap-ui-resource-roots='{"sugar.planning": "./webapp"}'
+		data-sap-ui-on-init="module:sap/ui/core/ComponentSupport">
+	</script>
+</head>
+<body class="sapUiBody">
+	<div data-sap-ui-component
+		data-name="sugar.planning"
+		data-id="container"
+		data-settings='{"id": "sugarPlanning"}'
+		data-handle-validation="true"
+		style="height: 100%"></div>
+</body>
+</html>

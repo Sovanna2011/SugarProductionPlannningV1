@@ -1,0 +1,45 @@
+<mvc:View
+	controllerName="sugar.planning.controller.Login"
+	xmlns="sap.m"
+	xmlns:f="sap.ui.layout.form"
+	xmlns:mvc="sap.ui.core.mvc">
+
+	<Page id="loginPage" showHeader="false" class="sugarLoginPage">
+		<VBox alignItems="Center" justifyContent="Center" class="sugarLoginBox">
+			<Panel width="26rem" class="sugarLoginPanel">
+				<headerToolbar>
+					<Toolbar>
+						<Title text="{i18n>appTitle}" level="H1"/>
+					</Toolbar>
+				</headerToolbar>
+
+				<f:SimpleForm layout="ResponsiveGridLayout" editable="true"
+					labelSpanL="4" labelSpanM="4" columnsL="1" columnsM="1">
+					<Label text="{i18n>username}"/>
+					<Input id="username" value="{view>/username}"
+						placeholder="{i18n>usernamePlaceholder}"
+						submit=".onLogin"/>
+
+					<Label text="{i18n>password}"/>
+					<Input id="password" type="Password" value="{view>/password}"
+						submit=".onLogin"/>
+				</f:SimpleForm>
+
+				<MessageStrip
+					visible="{= !!${view>/error} }"
+					text="{view>/error}"
+					type="Error"
+					showIcon="true"
+					class="sapUiSmallMarginTop"/>
+
+				<Button text="{i18n>signIn}" type="Emphasized" width="100%"
+					press=".onLogin" class="sapUiSmallMarginTop"/>
+
+				<!-- Development convenience: the seeded demo accounts. -->
+				<MessageStrip type="Information" showIcon="true"
+					class="sapUiMediumMarginTop"
+					text="{i18n>demoAccounts}"/>
+			</Panel>
+		</VBox>
+	</Page>
+</mvc:View>

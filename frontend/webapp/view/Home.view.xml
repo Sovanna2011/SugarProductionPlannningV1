@@ -1,0 +1,66 @@
+<mvc:View
+	controllerName="sugar.planning.controller.Home"
+	xmlns="sap.m"
+	xmlns:mvc="sap.ui.core.mvc">
+
+	<Page id="homePage" title="{i18n>appTitle}" showNavButton="false">
+		<headerContent>
+			<Text text="{app>/userName}" class="sapUiTinyMarginEnd"/>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<VBox class="sapUiMediumMargin">
+			<Title text="{i18n>homeWelcome}" level="H2" class="sapUiSmallMarginBottom"/>
+
+			<!--
+				The companies a user may work in are listed here as information
+				only. Choosing one happens inside each screen, not globally.
+			-->
+			<Text text="{i18n>homeCompaniesIntro}"/>
+			<HBox wrap="Wrap" class="sapUiSmallMarginTop sapUiMediumMarginBottom"
+				items="{app>/companies}">
+				<ObjectStatus
+					text="{app>companyCode} — {app>companyName}"
+					state="Information"
+					class="sapUiTinyMarginEnd"/>
+			</HBox>
+
+			<HBox wrap="Wrap" class="sugarTiles">
+				<GenericTile header="{i18n>tilePlanning}" subheader="{i18n>tilePlanningSub}"
+					press=".onOpenPlanning" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://table-view"/></TileContent>
+				</GenericTile>
+
+				<GenericTile header="{i18n>tileVersions}" subheader="{i18n>tileVersionsSub}"
+					press=".onOpenVersions" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://versions"/></TileContent>
+				</GenericTile>
+
+				<GenericTile header="{i18n>tileActual}" subheader="{i18n>tileActualSub}"
+					press=".onOpenActual" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://factory"/></TileContent>
+				</GenericTile>
+
+				<GenericTile header="{i18n>tileInventory}" subheader="{i18n>tileInventorySub}"
+					press=".onOpenInventory" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://inventory"/></TileContent>
+				</GenericTile>
+
+				<GenericTile header="{i18n>tilePlanVsActual}" subheader="{i18n>tilePlanVsActualSub}"
+					press=".onOpenPlanVsActual" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://business-objects-experience"/></TileContent>
+				</GenericTile>
+
+				<GenericTile header="{i18n>tileBrowser}" subheader="{i18n>tileBrowserSub}"
+					press=".onOpenBrowser" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://database"/></TileContent>
+				</GenericTile>
+
+				<GenericTile header="{i18n>tileDictionary}" subheader="{i18n>tileDictionarySub}"
+					press=".onOpenDictionary" class="sapUiTinyMargin sugarTile">
+					<TileContent><ImageContent src="sap-icon://tree"/></TileContent>
+				</GenericTile>
+			</HBox>
+		</VBox>
+	</Page>
+</mvc:View>

@@ -72,22 +72,6 @@ func (s *NumberRangeService) Next(ctx context.Context, companyID int64,
 		rng.Prefix, company.CompanyCode, fiscalYear, rng.Length, seq), nil
 }
 
-// NextBatch allocates several numbers of the same object type — used when a
-// version copy needs one document number per copied header.
-func (s *NumberRangeService) NextBatch(ctx context.Context, companyID int64,
-	objectType string, businessDate time.Time, count int) ([]string, error) {
-
-	numbers := make([]string, 0, count)
-	for i := 0; i < count; i++ {
-		no, err := s.Next(ctx, companyID, objectType, businessDate)
-		if err != nil {
-			return nil, err
-		}
-		numbers = append(numbers, no)
-	}
-	return numbers, nil
-}
-
 func (s *NumberRangeService) List(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.NumberRange], error) {
 	return s.repo.List(ctx, opts)
 }

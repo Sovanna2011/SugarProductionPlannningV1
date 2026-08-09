@@ -122,7 +122,7 @@ func (s *InventoryService) Apply(ctx context.Context, requests []MovementRequest
 			return err
 		}
 		for _, movement := range movements {
-			if err := s.applyToBalance(ctx, movement, false); err != nil {
+			if err := s.applyToBalance(ctx, movement); err != nil {
 				return err
 			}
 		}
@@ -308,7 +308,7 @@ func (s *InventoryService) validatePostingDate(ctx context.Context, companyID in
 // applyToBalance locks the stock key, applies the signed delta and enforces
 // the negative-stock and capacity rules. The row lock is what serialises
 // concurrent posters without locking the whole table (§F4).
-func (s *InventoryService) applyToBalance(ctx context.Context, movement model.InventoryMovement, reversal bool) error {
+func (s *InventoryService) applyToBalance(ctx context.Context, movement model.InventoryMovement) error {
 	movementType := movement.MovementType
 	if movementType == nil {
 		loaded, err := s.movements.FindByID(ctx, movement.MovementTypeID)
@@ -344,10 +344,10 @@ func (s *InventoryService) applyToBalance(ctx context.Context, movement model.In
 		return err
 	}
 
+	// A reversal is not a special case here: it arrives as its own movement
+	// with the opposite movement type, so the direction already says which way
+	// the stock goes.
 	direction := movementType.Direction
-	if reversal {
-		direction = opposite(direction)
-	}
 	if direction == model.DirectionIn {
 		balance.InQty = balance.InQty.Add(quantity)
 	} else {
@@ -550,7 +550,7 @@ func (s *InventoryService) Reverse(ctx context.Context, companyID, movementID in
 		if err := s.inventory.CreateMovements(ctx, []model.InventoryMovement{row}); err != nil {
 			return err
 		}
-		if err := s.applyToBalance(ctx, row, false); err != nil {
+		if err := s.applyToBalance(ctx, row); err != nil {
 			return err
 		}
 		if err := s.inventory.MarkReversed(ctx, companyID, original.ID); err != nil {
@@ -676,13 +676,6 @@ func (s *InventoryService) Reconcile(ctx context.Context, companyID int64, from,
 		})
 	}
 	return discrepancies, nil
-}
-
-func opposite(direction string) string {
-	if direction == model.DirectionIn {
-		return model.DirectionOut
-	}
-	return model.DirectionIn
 }
 
 func containsID(ids []int64, id int64) bool {

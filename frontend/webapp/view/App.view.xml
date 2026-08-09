@@ -1,0 +1,15 @@
+<mvc:View
+	controllerName="sugar.planning.controller.App"
+	xmlns="sap.m"
+	xmlns:mvc="sap.ui.core.mvc"
+	displayBlock="true">
+
+	<!--
+		The shell carries no company switcher. This is deliberate (§9, §H2):
+		a global company context would make two browser tabs fight over one
+		selection. Each view owns its own Company drop-down instead.
+	-->
+	<Shell id="shell" appWidthLimited="false">
+		<App id="appContainer" busy="{app>/busy}"/>
+	</Shell>
+</mvc:View>

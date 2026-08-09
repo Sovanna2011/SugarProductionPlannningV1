@@ -1,0 +1,111 @@
+<mvc:View
+	controllerName="sugar.planning.controller.Inventory"
+	xmlns="sap.m"
+	xmlns:core="sap.ui.core"
+	xmlns:mvc="sap.ui.core.mvc">
+
+	<Page title="{i18n>inventoryTitle}" showNavButton="true" navButtonPress=".onNavBack">
+		<headerContent>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<subHeader>
+			<OverflowToolbar>
+				<Label text="{i18n>company}" required="true"/>
+				<ComboBox selectedKey="{view>/companyId}" items="{app>/companies}"
+					change=".onCompanyChange" width="16rem">
+					<core:Item key="{app>companyId}" text="{app>companyCode} — {app>companyName}"/>
+				</ComboBox>
+				<ToolbarSpacer/>
+				<Button text="{i18n>load}" icon="sap-icon://refresh" press=".onLoad"/>
+				<Button text="{i18n>transfer}" icon="sap-icon://shipping-status"
+					press=".onTransfer" enabled="{view>/canTransfer}"/>
+			</OverflowToolbar>
+		</subHeader>
+
+		<IconTabBar expandable="false" class="sapUiResponsiveContentPadding">
+			<items>
+				<IconTabFilter text="{i18n>balances}" icon="sap-icon://sum">
+					<Table items="{view>/balances}" noDataText="{i18n>noStock}">
+						<columns>
+							<Column><Text text="{i18n>warehouse}"/></Column>
+							<Column><Text text="{i18n>material}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>opening}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>inQty}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>outQty}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>closing}"/></Column>
+						</columns>
+						<items>
+							<ColumnListItem>
+								<cells>
+									<ObjectIdentifier title="{view>warehouseCode}" text="{view>warehouseName}"/>
+									<ObjectIdentifier title="{view>materialCode}" text="{view>materialName}"/>
+									<Text text="{path: 'view>openingQty', formatter: '.formatter.quantity'}"/>
+									<Text text="{path: 'view>inQty', formatter: '.formatter.quantity'}"/>
+									<Text text="{path: 'view>outQty', formatter: '.formatter.quantity'}"/>
+									<ObjectNumber
+										number="{path: 'view>closingQty', formatter: '.formatter.quantity'}"
+										unit="{view>uomCode}"/>
+								</cells>
+							</ColumnListItem>
+						</items>
+					</Table>
+				</IconTabFilter>
+
+				<IconTabFilter text="{i18n>capacity}" icon="sap-icon://measuring-point">
+					<Table items="{view>/capacity}" noDataText="{i18n>noStock}">
+						<columns>
+							<Column><Text text="{i18n>warehouse}"/></Column>
+							<Column><Text text="{i18n>type}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>currentStock}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>capacityLimit}"/></Column>
+							<Column width="16rem"><Text text="{i18n>utilisation}"/></Column>
+						</columns>
+						<items>
+							<ColumnListItem>
+								<cells>
+									<ObjectIdentifier title="{view>warehouseCode}" text="{view>warehouseName}"/>
+									<Text text="{view>warehouseType}"/>
+									<Text text="{path: 'view>currentStock', formatter: '.formatter.quantity'}"/>
+									<!-- A null capacity means unlimited, never zero (§F5). -->
+									<Text text="{= ${view>capacity} === null ? '—' : ${view>capacity} }"/>
+									<ProgressIndicator
+										percentValue="{path: 'view>utilisationPct', formatter: '.formatter.capacityValue'}"
+										displayValue="{path: 'view>utilisationPct', formatter: '.formatter.capacityText'}"
+										showValue="true"
+										state="{path: 'view>trafficLight', formatter: '.formatter.capacityState'}"/>
+								</cells>
+							</ColumnListItem>
+						</items>
+					</Table>
+				</IconTabFilter>
+
+				<IconTabFilter text="{i18n>movements}" icon="sap-icon://journey-arrive">
+					<Table items="{view>/movements}" noDataText="{i18n>noMovements}">
+						<columns>
+							<Column><Text text="{i18n>documentNo}"/></Column>
+							<Column><Text text="{i18n>date}"/></Column>
+							<Column><Text text="{i18n>movementType}"/></Column>
+							<Column hAlign="End"><Text text="{i18n>quantity}"/></Column>
+							<Column><Text text="{i18n>source}"/></Column>
+						</columns>
+						<items>
+							<ColumnListItem>
+								<cells>
+									<ObjectIdentifier title="{view>documentNo}" text="{view>lineNo}"/>
+									<Text text="{view>transactionDate}"/>
+									<ObjectStatus text="{view>movementCode}"
+										state="{= ${view>direction} === 'IN' ? 'Success' : 'Warning' }"/>
+									<ObjectNumber
+										number="{path: 'view>quantity', formatter: '.formatter.quantity'}"
+										state="{= ${view>direction} === 'IN' ? 'Success' : 'Warning' }"/>
+									<Text text="{view>sourceModule}{= ${view>isReversed} ? ' (reversed)' : '' }"/>
+								</cells>
+							</ColumnListItem>
+						</items>
+					</Table>
+				</IconTabFilter>
+			</items>
+		</IconTabBar>
+	</Page>
+</mvc:View>

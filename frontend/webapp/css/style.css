@@ -1,0 +1,28 @@
+.sugarLoginPage {
+	background: linear-gradient(160deg, #0a3d62 0%, #1e6091 60%, #2a9d8f 100%);
+}
+
+.sugarLoginBox {
+	height: 100%;
+}
+
+.sugarLoginPanel {
+	background: var(--sapTile_Background, #fff);
+	border-radius: .75rem;
+	box-shadow: 0 1rem 2rem rgba(0, 0, 0, .25);
+	padding: 1rem;
+}
+
+.sugarTiles .sugarTile {
+	width: 16rem;
+	height: 10rem;
+}
+
+.sugarKpi {
+	width: 14rem;
+}
+
+/* The matrix is wide by nature; let it scroll rather than squeeze the cells. */
+.sapUiTableCell input {
+	text-align: right;
+}

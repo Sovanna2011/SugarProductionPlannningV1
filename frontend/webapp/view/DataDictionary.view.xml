@@ -1,0 +1,61 @@
+<mvc:View
+	controllerName="sugar.planning.controller.DataDictionary"
+	xmlns="sap.m"
+	xmlns:mvc="sap.ui.core.mvc">
+
+	<Page title="{i18n>dictionaryTitle}" showNavButton="true" navButtonPress=".onNavBack">
+		<headerContent>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<SplitContainer id="ddSplit">
+			<masterPages>
+				<Page title="{i18n>tables}">
+					<subHeader>
+						<Toolbar>
+							<SearchField liveChange=".onSearch" placeholder="{i18n>search}"/>
+						</Toolbar>
+					</subHeader>
+					<List items="{view>/tables}" mode="SingleSelectMaster"
+						selectionChange=".onTableSelect">
+						<StandardListItem
+							title="{view>tableName}"
+							description="{view>descriptionEn}"
+							info="{view>module}"
+							infoState="Information"/>
+					</List>
+				</Page>
+			</masterPages>
+			<detailPages>
+				<Page title="{view>/selectedTable/tableName}">
+					<VBox class="sapUiSmallMargin">
+						<ObjectStatus text="{view>/selectedTable/tableType}" state="Information"/>
+						<Text text="{view>/selectedTable/businessDescription}"
+							class="sapUiSmallMarginTop sapUiSmallMarginBottom"/>
+
+						<Table items="{view>/fields}" noDataText="{i18n>selectTable}">
+							<columns>
+								<Column><Text text="{i18n>field}"/></Column>
+								<Column><Text text="{i18n>label}"/></Column>
+								<Column><Text text="{i18n>dataType}"/></Column>
+								<Column hAlign="Center"><Text text="{i18n>key}"/></Column>
+								<Column hAlign="Center"><Text text="{i18n>required}"/></Column>
+							</columns>
+							<items>
+								<ColumnListItem>
+									<cells>
+										<ObjectIdentifier title="{view>fieldName}"/>
+										<Text text="{view>labelMedium}"/>
+										<Text text="{view>dataType}{= ${view>length} ? '(' + ${view>length} + ')' : '' }"/>
+										<Text text="{= ${view>isKey} ? '✓' : '' }"/>
+										<Text text="{= ${view>isRequired} ? '✓' : '' }"/>
+									</cells>
+								</ColumnListItem>
+							</items>
+						</Table>
+					</VBox>
+				</Page>
+			</detailPages>
+		</SplitContainer>
+	</Page>
+</mvc:View>

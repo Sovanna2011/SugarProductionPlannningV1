@@ -1,0 +1,80 @@
+flowchart TD
+
+    %% ============ PRODUCTION SOURCE ============
+    CANE["Sugarcane Intake<br/>Daily Supply"]
+    MILL["MILLING<br/>Process"]
+    POWER["POWER<br/>Process"]
+    REMELTP["REMELT<br/>Process"]
+    REFINE["REFINING<br/>Process"]
+
+    CANE --> MILL
+
+    %% ============ BY-PRODUCTS ============
+    MILL -->|"OUTPUT: Bagasse"| BAG["Bagasse<br/>BY_PRODUCT"]
+    BAG -->|"PRODUCTION_ISSUE"| POWER
+    POWER -->|"OUTPUT: Electricity MWh<br/>not stock managed"| ELEC["Electricity<br/>UTILITY"]
+
+    %% ============ MOLASSES BRANCH ============
+    MILL -->|"PRODUCTION_RECEIPT"| MT1
+    subgraph TANKS["Storage type = TANK"]
+        MT1["Molasses Tank 1"]
+        MT2["Molasses Tank 2"]
+        MT3["Molasses Tank 3"]
+    end
+    MT1 <-->|"TRANSFER_OUT / TRANSFER_IN"| MT2
+    MT2 <-->|"TRANSFER_OUT / TRANSFER_IN"| MT3
+    MT1 -->|"SALE"| SALE1["Molasses Sale"]
+    MT2 -->|"SALE"| SALE1
+    MT3 -->|"SALE"| SALE1
+
+    %% ============ RAW SUGAR BRANCH ============
+    MILL -->|"PRODUCTION_RECEIPT"| RW1
+    subgraph RAWWH["Storage type = WAREHOUSE"]
+        RW1["Raw Sugar Warehouse 1"]
+        RW2["Raw Sugar Warehouse 2"]
+    end
+    RW1 <-->|"TRANSFER_OUT / TRANSFER_IN"| RW2
+    RW1 -->|"REMELT_ISSUE"| REMELTP
+    RW2 -->|"REMELT_ISSUE"| REMELTP
+
+    %% ============ REFINED BRANCH ============
+    REMELTP -->|"Remelt Liquor"| REFINE
+
+    %% Conditioned route: Refined + Super Refined only
+    REFINE -->|"PRODUCTION_RECEIPT<br/>Refined Sugar + Super Refined only"| SILO["Condition Silo 1<br/>type = SILO<br/>capacity checked"]
+    SILO -->|"PRODUCTION_ISSUE + packaging"| PACK["Packing - conditioned<br/>50/25/10/1 KG • Jumbo • Bulk"]
+    PACK -->|"PRODUCTION_RECEIPT"| SW1["Sugar Warehouse 1<br/>Refined Sugar"]
+    PACK -->|"PRODUCTION_RECEIPT"| SW3["Sugar Warehouse 3<br/>Super Refined Sugar"]
+
+    %% Direct route: White Sugar bypasses the silo
+    REFINE ==>|"PRODUCTION_RECEIPT<br/>White Sugar - DIRECT, no conditioning"| PACKW["Packing - direct<br/>50/25/10/1 KG • Jumbo • Bulk"]
+    PACKW ==>|"PRODUCTION_RECEIPT"| SW2["Sugar Warehouse 2<br/>White Sugar"]
+
+    SW1 -->|"SALE"| SALE2["Finished Goods Sale"]
+    SW2 -->|"SALE"| SALE2
+    SW3 -->|"SALE"| SALE2
+
+    SW1 <-->|"TRANSFER"| SW2
+    SW2 <-->|"TRANSFER"| SW3
+
+    %% ============ ADJUSTMENTS ============
+    ADJ["ADJUSTMENT_IN / ADJUSTMENT_OUT<br/>REVERSAL<br/>applies to every storage location"]
+    ADJ -.-> TANKS
+    ADJ -.-> RAWWH
+    ADJ -.-> SILO
+    ADJ -.-> SW1
+    ADJ -.-> SW2
+    ADJ -.-> SW3
+
+    %% ============ COMPANY BOUNDARY ============
+    NOTE["All movements stay inside one company_id.<br/>Cross-company transfer is rejected: E-VAL-010"]
+
+    classDef proc fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef store fill:#fff8e1,stroke:#f9a825,color:#5d4037
+    classDef out fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef tech fill:#fce4ec,stroke:#c2185b,color:#880e4f
+
+    class CANE,MILL,POWER,REMELTP,REFINE,PACK,PACKW proc
+    class MT1,MT2,MT3,RW1,RW2,SILO,SW1,SW2,SW3 store
+    class SALE1,SALE2,ELEC,BAG out
+    class ADJ,NOTE tech

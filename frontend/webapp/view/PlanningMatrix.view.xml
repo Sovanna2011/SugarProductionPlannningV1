@@ -1,0 +1,142 @@
+<mvc:View
+	controllerName="sugar.planning.controller.PlanningMatrix"
+	xmlns="sap.m"
+	xmlns:mvc="sap.ui.core.mvc"
+	xmlns:t="sap.ui.table">
+
+	<Page id="planningPage" title="{i18n>planningTitle}"
+		showNavButton="true" navButtonPress=".onNavBack">
+
+		<headerContent>
+			<ObjectStatus text="{view>/versionStatus}"
+				state="{path: 'view>/versionStatus', formatter: '.formatter.versionState'}"/>
+			<Button icon="sap-icon://log" tooltip="{i18n>signOut}" press=".onLogout"/>
+		</headerContent>
+
+		<subHeader>
+			<!--
+				Every company-dependent view carries its own Company drop-down
+				(§H2). The selection lives in this view's model, so a second tab
+				can sit on a different company at the same time.
+			-->
+			<OverflowToolbar>
+				<Label text="{i18n>company}" required="true"/>
+				<ComboBox id="companySelect"
+					selectedKey="{view>/companyId}"
+					items="{app>/companies}"
+					change=".onCompanyChange"
+					width="16rem">
+					<core:Item xmlns:core="sap.ui.core"
+						key="{app>companyId}"
+						text="{app>companyCode} — {app>companyName}"/>
+				</ComboBox>
+
+				<ToolbarSpacer/>
+
+				<Label text="{i18n>season}"/>
+				<ComboBox id="seasonSelect" selectedKey="{view>/seasonId}"
+					items="{view>/seasons}" change=".onSeasonChange" width="12rem">
+					<core:Item xmlns:core="sap.ui.core" key="{view>id}" text="{view>seasonCode}"/>
+				</ComboBox>
+
+				<Label text="{i18n>version}"/>
+				<ComboBox id="versionSelect" selectedKey="{view>/versionId}"
+					items="{view>/versions}" change=".onVersionChange" width="16rem">
+					<core:Item xmlns:core="sap.ui.core" key="{view>id}"
+						text="V{view>versionNo} — {view>versionName} ({view>status})"/>
+				</ComboBox>
+			</OverflowToolbar>
+		</subHeader>
+
+		<content>
+			<VBox class="sapUiSmallMargin">
+				<OverflowToolbar>
+					<Label text="{i18n>movementType}"/>
+					<ComboBox selectedKey="{view>/movementTypeId}" items="{view>/movementTypes}"
+						change=".onSelectionChange" width="14rem">
+						<core:Item xmlns:core="sap.ui.core" key="{view>id}" text="{view>movementName}"/>
+					</ComboBox>
+
+					<Label text="{i18n>material}"/>
+					<ComboBox selectedKey="{view>/materialId}" items="{view>/materials}"
+						change=".onMaterialChange" width="16rem">
+						<core:Item xmlns:core="sap.ui.core" key="{view>id}"
+							text="{view>materialCode} — {view>materialName}"/>
+					</ComboBox>
+
+					<Label text="{i18n>process}"/>
+					<ComboBox selectedKey="{view>/processId}" items="{view>/processes}"
+						change=".onSelectionChange" width="12rem">
+						<core:Item xmlns:core="sap.ui.core" key="{view>id}" text="{view>processCode}"/>
+					</ComboBox>
+
+					<Label text="{i18n>dateFrom}"/>
+					<DatePicker value="{view>/dateFrom}" valueFormat="yyyy-MM-dd"
+						displayFormat="yyyy-MM-dd" change=".onSelectionChange" width="9rem"/>
+
+					<Label text="{i18n>dateTo}"/>
+					<DatePicker value="{view>/dateTo}" valueFormat="yyyy-MM-dd"
+						displayFormat="yyyy-MM-dd" change=".onSelectionChange" width="9rem"/>
+
+					<ToolbarSpacer/>
+					<Button text="{i18n>load}" press=".onLoad" icon="sap-icon://refresh"/>
+					<Button text="{i18n>save}" type="Emphasized" icon="sap-icon://save"
+						press=".onSave" enabled="{= ${view>/canEdit} &amp;&amp; ${view>/loaded} }"/>
+				</OverflowToolbar>
+
+				<MessageStrip
+					visible="{= ${view>/loaded} &amp;&amp; !${view>/canEdit} }"
+					text="{view>/readOnlyReason}"
+					type="Warning" showIcon="true" class="sapUiSmallMarginTop"/>
+
+				<!--
+					The columns are built at runtime, one per production line of
+					the selected company, which is what makes this a Date x Line
+					matrix rather than a fixed form (§28).
+				-->
+				<t:Table
+					id="matrixTable"
+					visible="{view>/loaded}"
+					rows="{view>/rows}"
+					selectionMode="None"
+					visibleRowCountMode="Auto"
+					minAutoRowCount="8"
+					class="sapUiSmallMarginTop">
+					<t:extension>
+						<Toolbar>
+							<Title text="{i18n>matrixTitle}"/>
+							<ToolbarSpacer/>
+							<ObjectStatus title="{i18n>total}"
+								text="{path: 'view>/grandTotal', formatter: '.formatter.quantity'}"
+								state="Information"/>
+						</Toolbar>
+					</t:extension>
+
+					<t:columns>
+						<t:Column width="9rem" hAlign="Begin">
+							<Label text="{i18n>planDate}"/>
+							<t:template>
+								<Text text="{view>planDate}"/>
+							</t:template>
+						</t:Column>
+						<!-- one column per production line is inserted here at runtime -->
+						<t:Column width="9rem" hAlign="End">
+							<Label text="{i18n>rowTotal}"/>
+							<t:template>
+								<ObjectNumber
+									number="{path: 'view>rowTotal', formatter: '.formatter.quantity'}"
+									emphasized="false"/>
+							</t:template>
+						</t:Column>
+					</t:columns>
+				</t:Table>
+
+				<IllustratedMessage
+					visible="{= !${view>/loaded} }"
+					illustrationType="sapIllus-NoFilterResults"
+					title="{i18n>matrixEmptyTitle}"
+					description="{i18n>matrixEmptyText}"/>
+			</VBox>
+		</content>
+	</Page>
+</mvc:View>

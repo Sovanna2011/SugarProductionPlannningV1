@@ -97,10 +97,6 @@ func NewPlanningService(
 
 // --- versions ------------------------------------------------------------
 
-func (s *PlanningService) ListVersions(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.PlanningVersion], error) {
-	return s.versions.List(ctx, opts)
-}
-
 func (s *PlanningService) VersionsForSeason(ctx context.Context, companyID, seasonID int64) ([]model.PlanningVersion, error) {
 	if _, err := s.refs.Season(ctx, companyID, seasonID); err != nil {
 		return nil, err

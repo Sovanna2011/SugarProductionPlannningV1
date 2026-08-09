@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"time"
 
 	"github.com/Sovanna2011/SugarProductionPlannningV1/backend/internal/audit"
 	apperrors "github.com/Sovanna2011/SugarProductionPlannningV1/backend/internal/errors"
@@ -244,18 +243,10 @@ func (s *MasterDataService) UpdateProductionLine(ctx context.Context, line *mode
 	return s.lines.Update(ctx, line.CompanyID, line)
 }
 
-func (s *MasterDataService) DeactivateProductionLine(ctx context.Context, companyID, id int64, version int) error {
-	return s.lines.Deactivate(ctx, companyID, id, version)
-}
-
 // --- seasons -------------------------------------------------------------
 
 func (s *MasterDataService) ListSeasons(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.Season], error) {
 	return s.seasons.List(ctx, opts)
-}
-
-func (s *MasterDataService) GetSeason(ctx context.Context, companyID, id int64) (*model.Season, error) {
-	return s.seasons.FindByID(ctx, companyID, id)
 }
 
 // CreateSeason relies on the database exclusion constraint for the overlap
@@ -291,10 +282,6 @@ func validateSeasonDates(season *model.Season) error {
 	return nil
 }
 
-func (s *MasterDataService) DeactivateSeason(ctx context.Context, companyID, id int64, version int) error {
-	return s.seasons.Deactivate(ctx, companyID, id, version)
-}
-
 // --- processes -----------------------------------------------------------
 
 func (s *MasterDataService) ListProcesses(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.Process], error) {
@@ -311,10 +298,6 @@ func (s *MasterDataService) ProcessMaterials(ctx context.Context, processID int6
 
 func (s *MasterDataService) CreateProcess(ctx context.Context, process *model.Process) error {
 	return s.processes.Create(ctx, process)
-}
-
-func (s *MasterDataService) UpdateProcess(ctx context.Context, process *model.Process) error {
-	return s.processes.Update(ctx, process)
 }
 
 // SetProcessMaterials rewrites the input/output network of a process. This is
@@ -348,20 +331,12 @@ func (s *MasterDataService) ListMovementTypes(ctx context.Context, opts interfac
 	return s.movements.List(ctx, opts)
 }
 
-func (s *MasterDataService) GetMovementType(ctx context.Context, id int64) (*model.MovementType, error) {
-	return s.movements.FindByID(ctx, id)
-}
-
 func (s *MasterDataService) CreateMovementType(ctx context.Context, mt *model.MovementType) error {
 	if mt.Direction != model.DirectionIn && mt.Direction != model.DirectionOut {
 		return apperrors.ErrValidation.Msgf("direction must be IN or OUT").
 			WithDetails(apperrors.Detail{Field: "direction", Value: mt.Direction})
 	}
 	return s.movements.Create(ctx, mt)
-}
-
-func (s *MasterDataService) UpdateMovementType(ctx context.Context, mt *model.MovementType) error {
-	return s.movements.Update(ctx, mt)
 }
 
 func (s *MasterDataService) ListUOMs(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.UOM], error) {
@@ -372,20 +347,12 @@ func (s *MasterDataService) CreateUOM(ctx context.Context, uom *model.UOM) error
 	return s.uoms.Create(ctx, uom)
 }
 
-func (s *MasterDataService) UpdateUOM(ctx context.Context, uom *model.UOM) error {
-	return s.uoms.Update(ctx, uom)
-}
-
 func (s *MasterDataService) ListPackagingTypes(ctx context.Context, opts interfaces.ListOptions) (interfaces.Page[model.PackagingType], error) {
 	return s.packaging.List(ctx, opts)
 }
 
 func (s *MasterDataService) CreatePackagingType(ctx context.Context, pt *model.PackagingType) error {
 	return s.packaging.Create(ctx, pt)
-}
-
-func (s *MasterDataService) UpdatePackagingType(ctx context.Context, pt *model.PackagingType) error {
-	return s.packaging.Update(ctx, pt)
 }
 
 // --- shared validation used by the document services ---------------------
@@ -462,17 +429,4 @@ func (v *ReferenceValidator) MaterialForCompany(ctx context.Context, companyID, 
 			WithDetails(apperrors.Detail{Field: "materialId", Message: "not assigned to this company"})
 	}
 	return material, relevance, nil
-}
-
-// DateInSeason enforces §F4 rule 6 for the season side of the check.
-func (v *ReferenceValidator) DateInSeason(season *model.Season, date time.Time) error {
-	if season == nil {
-		return nil
-	}
-	if !season.Contains(date) {
-		return apperrors.ErrDateOutsideSeason.WithDetails(apperrors.Detail{
-			Field: "date", Value: date.Format("2006-01-02"),
-		})
-	}
-	return nil
 }
