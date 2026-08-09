@@ -1,0 +1,21 @@
+# Go
+/backend/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Local configuration — never commit real credentials
+.env
+.env.local
+*.local
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Frontend
+node_modules/
+/frontend/dist/

@@ -1,0 +1,11 @@
+DELETE FROM process_materials;
+DELETE FROM processes;
+DELETE FROM packaging_types;
+DELETE FROM materials;
+UPDATE movement_types SET counterpart_id = NULL;
+DELETE FROM movement_types;
+DELETE FROM uom_conversions;
+DELETE FROM uoms;
+DELETE FROM role_permissions;
+DELETE FROM roles;
+DELETE FROM permissions;
