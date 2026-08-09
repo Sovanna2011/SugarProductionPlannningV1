@@ -44,6 +44,32 @@ make web                                  # UI on :8081, /api proxied to :8080
 
 `make help` lists the rest.
 
+### Loading a dataset to test against
+
+Master data alone leaves every screen empty. To put a working campaign in
+front of a tester:
+
+```bash
+scripts/demo-scenario.sh                 # against http://localhost:8080
+```
+
+It drives the API as the demo users, so everything it creates is data the
+business rules actually accepted. It leaves behind:
+
+- an **approved** budget version and a **draft** forecast copied from it,
+  seven days of plan across the mill and refinery lines
+- three days of milling posted — raw sugar, molasses and bagasse
+- the refinery route both ways: refined sugar conditioned in the silo and then
+  packed, white sugar straight to its own warehouse
+- bagasse burnt for electricity, which is produced but never becomes stock
+- a molasses transfer between two tanks
+- **one draft document left unposted**, so a tester can post it themselves
+- a second company with its own approved budget, so the consolidated report
+  has more than one company to consolidate
+
+It is additive, not idempotent — run it against a freshly migrated database.
+It refuses to run twice unless you pass `--force`.
+
 ---
 
 ## Layout
